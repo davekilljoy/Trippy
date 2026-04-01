@@ -7,7 +7,9 @@ const CATEGORIES = ['all', 'attraction', 'restaurant', 'hotel', 'experience', 't
 export default function Board({ cards, approvedCount, totalCount, onAdd, onEdit, onDelete, onApprove }) {
   const [filter, setFilter] = useState('all');
 
-  const filtered = filter === 'all' ? cards : cards.filter(c => c.category === filter);
+  const filtered = filter === 'approved'
+    ? cards.filter(c => c.david_approved && c.jen_approved)
+    : filter === 'all' ? cards : cards.filter(c => c.category === filter);
 
   return (
     <div className="board">
@@ -22,6 +24,12 @@ export default function Board({ cards, approvedCount, totalCount, onAdd, onEdit,
               {cat}
             </button>
           ))}
+          <button
+            className={`pill pill-approved ${filter === 'approved' ? 'active' : ''}`}
+            onClick={() => setFilter('approved')}
+          >
+            approved
+          </button>
         </div>
         <div className="board-actions">
           <div className="stats-bar">

@@ -115,7 +115,16 @@ function hotelIcon() {
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
 
-export default function DayMap({ stops, legs, hotel }) {
+// Destination marker (red — airport or destination hotel)
+function destinationIcon() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+    <circle cx="14" cy="14" r="13" fill="%23b5291c" stroke="%23f2ece0" stroke-width="2"/>
+    <text x="14" y="19" text-anchor="middle" fill="%23f2ece0" font-family="monospace" font-size="12" font-weight="bold">D</text>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${svg}`;
+}
+
+export default function DayMap({ stops, legs, hotel, waypoints = [] }) {
   const positions = useMemo(() =>
     stops
       .filter(s => s.lat && s.lng)
@@ -123,12 +132,21 @@ export default function DayMap({ stops, legs, hotel }) {
     [stops]
   );
 
-  // Include hotel in bounds fitting
+  // Include hotel + all waypoints (origin, destination, airport) in bounds fitting
   const allPositions = useMemo(() => {
     const pts = [...positions];
     if (hotel?.lat && hotel?.lng) pts.push({ lat: Number(hotel.lat), lng: Number(hotel.lng) });
+    for (const wp of waypoints) {
+      if (wp.lat && wp.lng) pts.push({ lat: Number(wp.lat), lng: Number(wp.lng) });
+    }
     return pts;
-  }, [positions, hotel]);
+  }, [positions, hotel, waypoints]);
+
+  // Separate out destination waypoints (not the origin hotel — that's already rendered)
+  const destinationWaypoints = useMemo(() =>
+    waypoints.filter(wp => wp.type === 'destination' && wp.lat && wp.lng),
+    [waypoints]
+  );
 
   if (allPositions.length === 0) return null;
 
@@ -175,6 +193,20 @@ export default function DayMap({ stops, legs, hotel }) {
               }}
             />
           ) : null
+        ))}
+
+        {/* Destination markers (destination hotel, airport) */}
+        {destinationWaypoints.map((wp, i) => (
+          <Marker
+            key={`dest-${i}`}
+            position={{ lat: Number(wp.lat), lng: Number(wp.lng) }}
+            title={wp.name}
+            icon={{
+              url: destinationIcon(),
+              scaledSize: { width: 28, height: 28 },
+              anchor: { x: 14, y: 14 },
+            }}
+          />
         ))}
       </Map>
 

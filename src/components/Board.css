@@ -44,6 +44,17 @@
   border-color: var(--ink);
 }
 
+.pill-approved {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.pill-approved.active {
+  background: var(--gold);
+  color: var(--paper);
+  border-color: var(--gold);
+}
+
 .board-actions {
   display: flex;
   align-items: center;

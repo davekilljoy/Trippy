@@ -24,6 +24,7 @@ export default function DayCard({ day, cards, itineraryId, liveData }) {
 
   // Use live route data if available, otherwise stored
   const legs = liveData?.legs?.length ? liveData.legs : (day.legs || []);
+  const waypoints = liveData?.waypoints?.length ? liveData.waypoints : (day.waypoints || []);
 
   // On-demand enrichment
   const handleEnrich = useCallback(async () => {
@@ -84,7 +85,7 @@ export default function DayCard({ day, cards, itineraryId, liveData }) {
         ))}
       </div>
 
-      <DayMap stops={stops} legs={legs} hotel={hotel} />
+      <DayMap stops={stops} legs={legs} hotel={hotel} waypoints={waypoints} />
 
       {/* Enrichment: on-demand */}
       <div className="day-card-enrichment">

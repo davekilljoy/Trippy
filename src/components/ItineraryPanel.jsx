@@ -112,7 +112,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
     setDayData({});
 
     try {
-      await finalizeItinerary(activeId, optimization, (s) => setStatus(s), dayHotels);
+      await finalizeItinerary(activeId, optimization, dayHotels);
 
       // Reload itinerary to get the day structure
       const data = await fetchItinerary(activeId);
@@ -128,7 +128,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
           const result = await loadDayRoutes(activeId, day.day_number);
           setDayData(prev => ({
             ...prev,
-            [day.day_number]: { legs: result.legs || [] },
+            [day.day_number]: { legs: result.legs || [], waypoints: result.waypoints || [] },
           }));
         } catch {
           setDayData(prev => ({
@@ -185,6 +185,14 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
   return (
     <div className="itinerary-layout">
       <aside className="itinerary-sidebar">
+        <button
+          className="build-btn"
+          disabled={!approvedCards.length || phase === 'proposing' || phase === 'finalizing' || phase === 'loading'}
+          onClick={handleBuild}
+        >
+          {phase === 'proposing' || phase === 'finalizing' || phase === 'loading' ? 'Building...' : 'New Itinerary'}
+        </button>
+
         {/* Version selector */}
         {versions.length > 0 && (
           <div className="sidebar-section">
@@ -249,7 +257,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
           )}
         </div>
 
-        {/* Pending cards */}
+        {/* Pending cards - hidden on itinerary tab
         <div className="sidebar-section">
           <h3 className="sidebar-heading">
             Pending <span className="count-badge">{pendingCards.length}</span>
@@ -266,15 +274,8 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
               ))}
             </ul>
           )}
-        </div>
+        </div> */}
 
-        <button
-          className="build-btn"
-          disabled={!approvedCards.length || phase === 'proposing' || phase === 'finalizing' || phase === 'loading'}
-          onClick={handleBuild}
-        >
-          {phase === 'proposing' || phase === 'finalizing' || phase === 'loading' ? 'Building...' : 'Build Itinerary'}
-        </button>
       </aside>
 
       <main className="itinerary-main">

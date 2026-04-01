@@ -74,7 +74,7 @@
 }
 
 .build-btn {
-  margin-top: auto;
+  margin-bottom: 1rem;
   font-family: var(--font-body);
   font-size: 0.8rem;
   text-transform: uppercase;

@@ -259,8 +259,14 @@ export async function proposeItinerary(id, onStatus) {
   return streamSSE(`${BASE}/itineraries/${id}/propose`, {}, onStatus);
 }
 
-export async function finalizeItinerary(id, optimization, onStatus, dayHotels) {
-  return streamSSE(`${BASE}/itineraries/${id}/finalize`, { optimization, dayHotels }, onStatus);
+export async function finalizeItinerary(id, optimization, dayHotels) {
+  const res = await fetch(`${BASE}/itineraries/${id}/finalize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ optimization, dayHotels }),
+  });
+  if (!res.ok) throw new Error('Failed to finalize itinerary');
+  return res.json();
 }
 
 export async function* streamDayEnrichment(itineraryId, dayNum) {
