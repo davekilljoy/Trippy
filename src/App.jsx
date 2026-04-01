@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
+import { APIProvider } from '@vis.gl/react-google-maps';
 import Board from './components/Board.jsx';
 import ItineraryPanel from './components/ItineraryPanel.jsx';
 import CardModal from './components/CardModal.jsx';
 import IdeaPicker from './components/IdeaPicker.jsx';
-import { fetchCards, fetchSettings, saveSettings, createCard, updateCard, deleteCard, toggleApproval, generateIdeas, bulkCreateCards } from './lib/api.js';
+import { fetchCards, fetchSettings, saveSettings, createCard, updateCard, deleteCard, toggleApproval, bulkCreateCards, generateIdeas } from './lib/api.js';
+
+const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 export default function App() {
   const [view, setView] = useState('board');
@@ -121,7 +124,7 @@ export default function App() {
   const pendingCards = cards.filter(c => !(c.david_approved && c.jen_approved));
 
   return (
-    <>
+    <APIProvider apiKey={GOOGLE_MAPS_KEY}>
       <header className="app-header">
         <h1 className="app-title">Japan Planner <span>日本の旅</span></h1>
         <div className="header-controls">
@@ -222,8 +225,8 @@ export default function App() {
         />
       )}
 
-      {/* Floating generate bar */}
-      {!pickerIdeas && (
+      {/* Floating generate bar — only on Board view */}
+      {view === 'board' && !pickerIdeas && (
         <div className="gen-bar">
           {genLoading ? (
             <div className="gen-bar-loading">
@@ -247,6 +250,6 @@ export default function App() {
           )}
         </div>
       )}
-    </>
+    </APIProvider>
   );
 }

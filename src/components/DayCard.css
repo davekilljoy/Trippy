@@ -1,0 +1,259 @@
+.day-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  padding: 1.2rem;
+  margin-bottom: 1.5rem;
+}
+
+.day-card-header {
+  margin-bottom: 1rem;
+}
+
+.day-card-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.day-card-num {
+  font-family: var(--font-body);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--paper);
+  background: var(--ink);
+  padding: 0.15rem 0.5rem;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
+.day-card-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.day-card-date {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* Stops list */
+.day-card-stops {
+  margin-bottom: 1rem;
+}
+
+.day-card-stop {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.day-card-stop:last-child {
+  border-bottom: none;
+}
+
+.day-card-stop-num {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.65rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.day-card-stop-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.day-card-stop-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.day-card-stop-cat {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: var(--paper);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.day-card-stop-top strong {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 0.92rem;
+}
+
+.day-card-stop-time {
+  font-size: 0.7rem;
+  color: var(--gold);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.day-card-stop-addr {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+
+.day-card-stop-note {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--ink);
+  font-style: italic;
+  margin-top: 0.2rem;
+}
+
+.day-card-stop-travel {
+  font-size: 0.68rem;
+  color: var(--gold);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+/* Enrichment */
+.day-card-enrichment {
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
+}
+
+.enrich-btn {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.enrich-btn:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.enrich-btn.enrich-retry {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.enrich-toggle {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.3rem 0;
+  border: none;
+  background: transparent;
+  color: var(--gold);
+  cursor: pointer;
+}
+
+.enrich-toggle:hover {
+  color: var(--ink);
+}
+
+.enrich-streaming {
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.enrich-content {
+  margin-top: 0.6rem;
+}
+
+.enrich-content .markdown-body h2 {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.1rem;
+  margin: 1rem 0 0.4rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.2rem;
+}
+
+.enrich-content .markdown-body h3 {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 0.95rem;
+  margin: 0.8rem 0 0.3rem;
+}
+
+.enrich-content .markdown-body p {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  margin-bottom: 0.4rem;
+}
+
+.enrich-content .markdown-body ul {
+  margin: 0.3rem 0 0.6rem 1.2rem;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.enrich-content .markdown-body li {
+  margin-bottom: 0.2rem;
+}
+
+.enrich-content .markdown-body strong {
+  font-weight: 600;
+}
+
+.enrich-content .markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1rem 0;
+}
+
+.enrich-ready {
+  font-size: 0.68rem;
+  color: var(--gold);
+  font-style: italic;
+}
+
+.stream-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 14px;
+  background: var(--ink);
+  margin-left: 2px;
+  animation: blink 0.8s step-end infinite;
+  vertical-align: text-bottom;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}

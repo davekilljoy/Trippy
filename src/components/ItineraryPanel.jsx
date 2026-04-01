@@ -1,92 +1,207 @@
-import { useState, useRef, useCallback } from 'react';
-import { streamItinerary, getDirections } from '../lib/api.js';
-import DayMap from './DayMap.jsx';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  createItinerary, fetchItineraries, fetchItinerary, deleteItinerary,
+  proposeItinerary, finalizeItinerary,
+  fetchFlights, createFlight, updateFlight, deleteFlight,
+} from '../lib/api.js';
+import ProposalReview from './ProposalReview.jsx';
+import DayCard from './DayCard.jsx';
+import FlightCard from './FlightCard.jsx';
+import FlightForm from './FlightForm.jsx';
 import './ItineraryPanel.css';
 
 export default function ItineraryPanel({ approvedCards, pendingCards }) {
-  const [markdown, setMarkdown] = useState('');
-  const [streaming, setStreaming] = useState(false);
+  // Itinerary state
+  const [versions, setVersions] = useState([]);
+  const [activeId, setActiveId] = useState(null);
+  const [itinerary, setItinerary] = useState(null);
+
+  // UI phase: 'idle' | 'proposing' | 'reviewing' | 'finalizing' | 'complete'
+  const [phase, setPhase] = useState('idle');
+  const [status, setStatus] = useState('');
   const [error, setError] = useState(null);
-  const [dayPlan, setDayPlan] = useState(null); // [{ day, stops, legs }]
-  const [buildingRoutes, setBuildingRoutes] = useState(false);
-  const abortRef = useRef(false);
 
-  const geoCards = approvedCards.filter(c => c.lat && c.lng);
-  const ungeoCards = approvedCards.filter(c => !c.lat || !c.lng);
+  // Flights
+  const [flights, setFlights] = useState([]);
+  const [flightModal, setFlightModal] = useState(null); // null | { flight } | {}
 
-  // Simple proximity grouping: cluster cards by nearest-neighbor, N per day
-  const buildDayPlan = useCallback(async () => {
-    if (geoCards.length === 0) return;
-    setBuildingRoutes(true);
+  // Load versions + flights on mount
+  useEffect(() => {
+    loadVersions();
+    loadFlights();
+  }, []);
 
-    // Estimate ~4 stops per day
-    const stopsPerDay = Math.max(3, Math.min(5, Math.ceil(geoCards.length / Math.max(1, Math.ceil(geoCards.length / 4)))));
-    const remaining = [...geoCards];
-    const days = [];
-
-    while (remaining.length > 0) {
-      const dayStops = [remaining.shift()];
-      while (dayStops.length < stopsPerDay && remaining.length > 0) {
-        // Find nearest to last added stop
-        const last = dayStops[dayStops.length - 1];
-        let bestIdx = 0;
-        let bestDist = Infinity;
-        for (let i = 0; i < remaining.length; i++) {
-          const d = haversine(last.lat, last.lng, remaining[i].lat, remaining[i].lng);
-          if (d < bestDist) { bestDist = d; bestIdx = i; }
-        }
-        dayStops.push(remaining.splice(bestIdx, 1)[0]);
-      }
-      days.push({ day: days.length + 1, stops: dayStops, legs: [] });
+  const loadVersions = async () => {
+    const v = await fetchItineraries();
+    setVersions(v);
+    // If there are versions and none active, select the latest
+    if (v.length && !activeId) {
+      loadItinerary(v[0].id);
     }
+  };
 
-    // Fetch transit directions for each day
-    for (const day of days) {
-      if (day.stops.length < 2) continue;
-      const waypoints = day.stops.map(s => ({ lat: s.lat, lng: s.lng }));
-      try {
-        const result = await getDirections(waypoints);
-        day.legs = result.legs || [];
-      } catch {}
-    }
-
-    setDayPlan(days);
-    setBuildingRoutes(false);
-  }, [geoCards]);
-
-  const handleBuild = useCallback(async () => {
-    if (!approvedCards.length) return;
-    setMarkdown('');
+  const loadItinerary = async (id) => {
+    setActiveId(id);
     setError(null);
-    setStreaming(true);
-    setDayPlan(null);
-    abortRef.current = false;
-
-    // Build routes in parallel with LLM stream
-    buildDayPlan();
-
     try {
-      const ids = approvedCards.map(c => c.id);
-      let text = '';
-      for await (const delta of streamItinerary(ids)) {
-        if (abortRef.current) break;
-        text += delta;
-        setMarkdown(text);
+      const data = await fetchItinerary(id);
+      setItinerary(data);
+      // Determine phase from itinerary state
+      if (data.phase === 'final' && data.days?.length) {
+        setPhase('complete');
+      } else if (data.phase === 'proposal' && data.proposal) {
+        setPhase('reviewing');
+      } else {
+        setPhase('idle');
       }
     } catch (err) {
       setError(err.message);
-    } finally {
-      setStreaming(false);
     }
-  }, [approvedCards, buildDayPlan]);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(markdown);
   };
+
+  const loadFlights = async () => {
+    const f = await fetchFlights();
+    setFlights(f);
+  };
+
+  // --- Build new itinerary ---
+  const handleBuild = useCallback(async () => {
+    if (!approvedCards.length) return;
+    setError(null);
+    setStatus('Creating itinerary...');
+    setPhase('proposing');
+
+    try {
+      // Create itinerary record
+      const cardIds = approvedCards.map(c => c.id);
+      const created = await createItinerary(cardIds);
+      setActiveId(created.id);
+
+      // Propose day breakdown
+      setStatus('Analyzing your places...');
+      const result = await proposeItinerary(created.id, (s) => setStatus(s));
+
+      if (result?.proposal) {
+        setItinerary({ ...created, proposal: result.proposal, phase: 'proposal' });
+        setPhase('reviewing');
+      } else {
+        setError('No proposal received');
+        setPhase('idle');
+      }
+      await loadVersions();
+    } catch (err) {
+      setError(err.message);
+      setPhase('idle');
+    } finally {
+      setStatus('');
+    }
+  }, [approvedCards]);
+
+  // --- Finalize with optimization ---
+  const handleFinalize = useCallback(async (optimization) => {
+    if (!activeId) return;
+    setError(null);
+    setStatus('Building your schedule...');
+    setPhase('finalizing');
+
+    try {
+      const result = await finalizeItinerary(activeId, optimization, (s) => setStatus(s));
+
+      // Reload full itinerary with days
+      const data = await fetchItinerary(activeId);
+      setItinerary(data);
+      setPhase('complete');
+      await loadVersions();
+    } catch (err) {
+      setError(err.message);
+      setPhase('reviewing'); // Go back to review
+    } finally {
+      setStatus('');
+    }
+  }, [activeId]);
+
+  // --- Version management ---
+  const handleSelectVersion = (id) => {
+    loadItinerary(id);
+  };
+
+  const handleDeleteVersion = async (id) => {
+    await deleteItinerary(id);
+    if (activeId === id) {
+      setActiveId(null);
+      setItinerary(null);
+      setPhase('idle');
+    }
+    await loadVersions();
+  };
+
+  // --- Flight management ---
+  const handleSaveFlight = async (data) => {
+    if (flightModal?.flight?.id) {
+      await updateFlight(flightModal.flight.id, data);
+    } else {
+      await createFlight(data);
+    }
+    await loadFlights();
+    setFlightModal(null);
+  };
+
+  const handleDeleteFlight = async (id) => {
+    await deleteFlight(id);
+    await loadFlights();
+  };
+
+  const outboundFlight = flights.find(f => f.direction === 'outbound');
+  const returnFlight = flights.find(f => f.direction === 'return');
 
   return (
     <div className="itinerary-layout">
       <aside className="itinerary-sidebar">
+        {/* Version selector */}
+        {versions.length > 0 && (
+          <div className="sidebar-section">
+            <h3 className="sidebar-heading">Versions</h3>
+            <div className="version-list">
+              {versions.map(v => (
+                <button
+                  key={v.id}
+                  className={`version-item ${v.id === activeId ? 'active' : ''}`}
+                  onClick={() => handleSelectVersion(v.id)}
+                >
+                  <span className="version-name">{v.name}</span>
+                  <span className="version-phase">{v.phase}</span>
+                  <button
+                    className="version-delete"
+                    onClick={e => { e.stopPropagation(); handleDeleteVersion(v.id); }}
+                  >×</button>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Flights */}
+        <div className="sidebar-section">
+          <h3 className="sidebar-heading">
+            Flights
+            <button className="add-flight-btn" onClick={() => setFlightModal({})}>+ Add</button>
+          </h3>
+          {flights.length === 0 ? (
+            <p className="sidebar-empty">No flights added yet.</p>
+          ) : (
+            <div className="sidebar-flights">
+              {flights.map(f => (
+                <div key={f.id} className="sidebar-flight-item">
+                  <span className="sidebar-flight-dir">{f.direction === 'outbound' ? '→' : '←'}</span>
+                  <span>{f.departure_airport || '?'} — {f.arrival_airport || '?'}</span>
+                  <button className="sidebar-flight-edit" onClick={() => setFlightModal({ flight: f })}>Edit</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Approved cards */}
         <div className="sidebar-section">
           <h3 className="sidebar-heading">
             Approved <span className="count-badge">{approvedCards.length}</span>
@@ -106,6 +221,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
           )}
         </div>
 
+        {/* Pending cards */}
         <div className="sidebar-section">
           <h3 className="sidebar-heading">
             Pending <span className="count-badge">{pendingCards.length}</span>
@@ -126,107 +242,81 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
 
         <button
           className="build-btn"
-          disabled={!approvedCards.length || streaming}
+          disabled={!approvedCards.length || phase === 'proposing' || phase === 'finalizing'}
           onClick={handleBuild}
         >
-          {streaming ? 'Building...' : 'Build Itinerary'}
+          {phase === 'proposing' || phase === 'finalizing' ? 'Building...' : 'Build Itinerary'}
         </button>
       </aside>
 
       <main className="itinerary-main">
         {error && <div className="itinerary-error">{error}</div>}
 
-        {!markdown && !streaming && !error && !dayPlan && (
+        {status && (phase === 'proposing' || phase === 'finalizing') && (
+          <div className="itinerary-status">
+            <div className="status-spinner" />
+            <span>{status}</span>
+          </div>
+        )}
+
+        {/* Idle state */}
+        {phase === 'idle' && !itinerary && (
           <div className="itinerary-placeholder">
-            <p>Approve items on the Board, then click <strong>Build Itinerary</strong> to generate a detailed plan with maps and routes.</p>
+            <p>Approve items on the Board, then click <strong>Build Itinerary</strong> to generate a day-by-day plan with maps, routes, and tips.</p>
           </div>
         )}
 
-        {/* Day-by-day maps */}
-        {dayPlan && dayPlan.length > 0 && (
+        {/* Phase 1: Reviewing proposal */}
+        {phase === 'reviewing' && itinerary?.proposal && (
+          <ProposalReview
+            proposal={itinerary.proposal}
+            cards={approvedCards}
+            onFinalize={handleFinalize}
+          />
+        )}
+
+        {/* Phase 2 complete: Day-by-day view */}
+        {phase === 'complete' && itinerary?.days?.length > 0 && (
           <div className="day-plans">
-            {dayPlan.map(day => (
-              <div key={day.day} className="day-plan-block">
-                <h2 className="day-heading">Day {day.day}</h2>
-                <div className="day-stop-list">
-                  {day.stops.map((stop, i) => (
-                    <div key={stop.id} className="day-stop">
-                      <span className="day-stop-num">{i + 1}</span>
-                      <div className="day-stop-info">
-                        <span className="day-stop-cat">{stop.category}</span>
-                        <strong>{stop.title}</strong>
-                        {stop.address && <small>{stop.address}</small>}
-                      </div>
-                      {day.legs[i] && (
-                        <span className="day-stop-travel">
-                          → {day.legs[i].duration} ({day.legs[i].distance})
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <DayMap stops={day.stops} legs={day.legs} />
-              </div>
+            {/* Outbound flight */}
+            {outboundFlight && (
+              <FlightCard
+                flight={outboundFlight}
+                onEdit={(f) => setFlightModal({ flight: f })}
+                onDelete={handleDeleteFlight}
+              />
+            )}
+
+            {/* Day cards */}
+            {itinerary.days.map(day => (
+              <DayCard
+                key={day.id}
+                day={day}
+                cards={approvedCards}
+                itineraryId={activeId}
+              />
             ))}
+
+            {/* Return flight */}
+            {returnFlight && (
+              <FlightCard
+                flight={returnFlight}
+                onEdit={(f) => setFlightModal({ flight: f })}
+                onDelete={handleDeleteFlight}
+              />
+            )}
           </div>
-        )}
-
-        {buildingRoutes && (
-          <div className="route-loading">Calculating routes...</div>
-        )}
-
-        {ungeoCards.length > 0 && dayPlan && (
-          <div className="ungeo-warning">
-            {ungeoCards.length} item{ungeoCards.length > 1 ? 's' : ''} couldn't be mapped: {ungeoCards.map(c => c.title).join(', ')}
-          </div>
-        )}
-
-        {/* LLM markdown output */}
-        {(markdown || streaming) && (
-          <div className="itinerary-output">
-            <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }} />
-            {streaming && <span className="stream-cursor" />}
-          </div>
-        )}
-
-        {markdown && !streaming && (
-          <button className="copy-btn" onClick={handleCopy}>Copy Markdown</button>
         )}
       </main>
+
+      {/* Flight form modal */}
+      {flightModal && (
+        <FlightForm
+          flight={flightModal.flight || null}
+          onSave={handleSaveFlight}
+          onClose={() => setFlightModal(null)}
+        />
+      )}
     </div>
   );
-}
-
-function haversine(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function renderMarkdown(md) {
-  let html = md
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/^---$/gm, '<hr/>');
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
-  html = html.replace(/\n{2,}/g, '\n</p><p>\n');
-  html = '<p>' + html + '</p>';
-  html = html.replace(/<p>\s*<(h[1-3]|ul|hr)/g, '<$1');
-  html = html.replace(/<\/(h[1-3]|ul)>\s*<\/p>/g, '</$1>');
-  html = html.replace(/<hr\/>\s*<\/p>/g, '<hr/>');
-  html = html.replace(/<p>\s*<\/p>/g, '');
-
-  return html;
 }

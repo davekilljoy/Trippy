@@ -1,40 +1,89 @@
-import { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { useEffect, useRef, useMemo } from 'react';
+import { Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
 import './DayMap.css';
 
-// Fix default marker icons in Leaflet + bundlers
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+// Decode Google encoded polyline to array of {lat, lng}
+function decodePolyline(encoded) {
+  if (!encoded) return [];
+  const points = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let shift = 0, result = 0, byte;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
 
-function numberIcon(n) {
-  return L.divIcon({
-    className: 'day-marker',
-    html: `<span>${n}</span>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-  });
+    shift = 0; result = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+
+    points.push({ lat: lat / 1e5, lng: lng / 1e5 });
+  }
+  return points;
 }
 
+// Draw polylines on the map
+function RoutePolylines({ legs }) {
+  const map = useMap();
+  const polylinesRef = useRef([]);
+
+  useEffect(() => {
+    if (!map || !legs?.length) return;
+
+    // Clear old polylines
+    polylinesRef.current.forEach(p => p.setMap(null));
+    polylinesRef.current = [];
+
+    for (const leg of legs) {
+      if (!leg.polyline) continue;
+      const path = decodePolyline(leg.polyline);
+      if (!path.length) continue;
+
+      const polyline = new google.maps.Polyline({
+        path,
+        strokeColor: '#12100e',
+        strokeOpacity: 0.6,
+        strokeWeight: 3,
+        map,
+      });
+      polylinesRef.current.push(polyline);
+    }
+
+    return () => {
+      polylinesRef.current.forEach(p => p.setMap(null));
+      polylinesRef.current = [];
+    };
+  }, [map, legs]);
+
+  return null;
+}
+
+// Auto-fit bounds to show all stops
 function FitBounds({ positions }) {
   const map = useMap();
   useEffect(() => {
-    if (positions.length > 0) {
-      map.fitBounds(positions, { padding: [40, 40] });
-    }
+    if (!map || positions.length === 0) return;
+    const bounds = new google.maps.LatLngBounds();
+    positions.forEach(p => bounds.extend(p));
+    map.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
   }, [map, positions]);
   return null;
 }
 
 export default function DayMap({ stops, legs }) {
-  const positions = stops
-    .filter(s => s.lat && s.lng)
-    .map(s => [s.lat, s.lng]);
+  const positions = useMemo(() =>
+    stops
+      .filter(s => s.lat && s.lng)
+      .map(s => ({ lat: s.lat, lng: s.lng })),
+    [stops]
+  );
 
   if (positions.length === 0) return null;
 
@@ -42,33 +91,31 @@ export default function DayMap({ stops, legs }) {
 
   return (
     <div className="day-map-wrap">
-      <MapContainer center={center} zoom={13} className="day-map" scrollWheelZoom={false}>
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+      <Map
+        defaultCenter={center}
+        defaultZoom={13}
+        className="day-map"
+        gestureHandling="cooperative"
+        disableDefaultUI={true}
+        zoomControl={true}
+        mapId="trippy-day-map"
+        styles={[
+          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+          { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+        ]}
+      >
         <FitBounds positions={positions} />
+        <RoutePolylines legs={legs} />
         {stops.map((stop, i) => (
           stop.lat && stop.lng ? (
-            <Marker key={i} position={[stop.lat, stop.lng]} icon={numberIcon(i + 1)}>
-              <Popup>
-                <strong>{stop.title}</strong>
-                {stop.address && <br />}
-                {stop.address && <small>{stop.address}</small>}
-              </Popup>
-            </Marker>
+            <AdvancedMarker key={stop.id || i} position={{ lat: stop.lat, lng: stop.lng }}>
+              <div className="day-marker">
+                <span>{i + 1}</span>
+              </div>
+            </AdvancedMarker>
           ) : null
         ))}
-        {positions.length > 1 && (
-          <Polyline
-            positions={positions}
-            color="#12100e"
-            weight={2}
-            dashArray="6 4"
-            opacity={0.5}
-          />
-        )}
-      </MapContainer>
+      </Map>
 
       {legs && legs.length > 0 && (
         <div className="day-legs">

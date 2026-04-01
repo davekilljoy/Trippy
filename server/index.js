@@ -44,6 +44,49 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS itineraries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    version INTEGER NOT NULL DEFAULT 1,
+    name TEXT,
+    card_ids TEXT NOT NULL,
+    optimization TEXT,
+    phase TEXT NOT NULL DEFAULT 'draft',
+    proposal_json TEXT,
+    final_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS itinerary_days (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    itinerary_id INTEGER NOT NULL REFERENCES itineraries(id) ON DELETE CASCADE,
+    day_number INTEGER NOT NULL,
+    date TEXT,
+    title TEXT,
+    stops_json TEXT NOT NULL DEFAULT '[]',
+    legs_json TEXT,
+    enrichment_md TEXT,
+    enrichment_status TEXT DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS flights (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    direction TEXT NOT NULL,
+    airline TEXT,
+    flight_number TEXT,
+    departure_airport TEXT,
+    arrival_airport TEXT,
+    departure_time TEXT,
+    arrival_time TEXT,
+    departure_tz TEXT,
+    arrival_tz TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
 // Migrations
 try { db.exec('ALTER TABLE cards ADD COLUMN address TEXT'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN lat REAL'); } catch {}
@@ -199,6 +242,32 @@ async function geocodeCard(card) {
   }
 }
 
+// Google Maps Directions API (returns polylines + duration/distance)
+async function fetchDirections(origin, destination, mode = 'transit') {
+  if (!GOOGLE_MAPS_API_KEY) return { duration: 'unknown', distance: 'unknown', polyline: null };
+  try {
+    const params = new URLSearchParams({
+      origin,
+      destination,
+      mode,
+      key: GOOGLE_MAPS_API_KEY,
+      region: 'jp',
+    });
+    const res = await fetch(`https://maps.googleapis.com/maps/api/directions/json?${params}`);
+    if (!res.ok) return { duration: 'unknown', distance: 'unknown', polyline: null };
+    const data = await res.json();
+    const route = data.routes?.[0];
+    const leg = route?.legs?.[0];
+    return {
+      duration: leg?.duration?.text || 'unknown',
+      duration_value: leg?.duration?.value || 0,
+      distance: leg?.distance?.text || 'unknown',
+      polyline: route?.overview_polyline?.points || null,
+      status: data.status,
+    };
+  } catch { return { duration: 'unknown', distance: 'unknown', polyline: null }; }
+}
+
 async function getDirections(origins, destinations, mode = 'transit') {
   if (!GOOGLE_MAPS_API_KEY) return null;
   try {
@@ -226,7 +295,7 @@ app.post('/api/cards/geocode', async (req, res) => {
   res.json({ geocoded: updated });
 });
 
-// Directions between a list of places
+// Directions between a list of places (now uses Directions API for polylines)
 app.post('/api/directions', async (req, res) => {
   const { waypoints } = req.body; // [{ lat, lng }, ...]
   if (!waypoints?.length || waypoints.length < 2) {
@@ -237,15 +306,11 @@ app.post('/api/directions', async (req, res) => {
   for (let i = 0; i < waypoints.length - 1; i++) {
     const origin = `${waypoints[i].lat},${waypoints[i].lng}`;
     const dest = `${waypoints[i + 1].lat},${waypoints[i + 1].lng}`;
-    const result = await getDirections([origin], [dest]);
-    const el = result?.rows?.[0]?.elements?.[0];
+    const result = await fetchDirections(origin, dest);
     legs.push({
       from: waypoints[i],
       to: waypoints[i + 1],
-      duration: el?.duration?.text || 'unknown',
-      duration_value: el?.duration?.value || 0,
-      distance: el?.distance?.text || 'unknown',
-      status: el?.status || 'UNKNOWN',
+      ...result,
     });
   }
 
@@ -890,6 +955,605 @@ ${cardList}`;
     res.write('data: [DONE]\n\n');
     res.end();
   }
+});
+
+// --- Itinerary CRUD ---
+
+app.post('/api/itineraries', (req, res) => {
+  const { card_ids, name } = req.body;
+  if (!card_ids?.length) return res.status(400).json({ error: 'card_ids required' });
+
+  // Determine version number (increment from max version for same card set)
+  const cardIdsJson = JSON.stringify([...card_ids].sort((a, b) => a - b));
+  const existing = db.prepare('SELECT MAX(version) as maxVer FROM itineraries').get();
+  const version = (existing?.maxVer || 0) + 1;
+
+  const stmt = db.prepare(`
+    INSERT INTO itineraries (version, name, card_ids, phase)
+    VALUES (?, ?, ?, 'draft')
+  `);
+  const info = stmt.run(version, name || `v${version}`, cardIdsJson);
+  const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(info.lastInsertRowid);
+  res.status(201).json(itinerary);
+});
+
+app.get('/api/itineraries', (req, res) => {
+  const rows = db.prepare('SELECT id, version, name, phase, optimization, created_at, updated_at FROM itineraries ORDER BY created_at DESC').all();
+  res.json(rows);
+});
+
+app.get('/api/itineraries/:id', (req, res) => {
+  const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(req.params.id);
+  if (!itinerary) return res.status(404).json({ error: 'not found' });
+
+  const days = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? ORDER BY day_number').all(req.params.id);
+  // Parse JSON fields
+  for (const day of days) {
+    try { day.stops = JSON.parse(day.stops_json); } catch { day.stops = []; }
+    try { day.legs = JSON.parse(day.legs_json || '[]'); } catch { day.legs = []; }
+  }
+
+  let cardIds;
+  try { cardIds = JSON.parse(itinerary.card_ids); } catch { cardIds = []; }
+  let proposal;
+  try { proposal = JSON.parse(itinerary.proposal_json || 'null'); } catch { proposal = null; }
+  let final_data;
+  try { final_data = JSON.parse(itinerary.final_json || 'null'); } catch { final_data = null; }
+
+  res.json({ ...itinerary, card_ids: cardIds, proposal, final_data, days });
+});
+
+app.patch('/api/itineraries/:id', (req, res) => {
+  const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(req.params.id);
+  if (!itinerary) return res.status(404).json({ error: 'not found' });
+
+  const allowed = ['name', 'optimization', 'phase'];
+  const sets = [];
+  const params = [];
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) {
+      sets.push(`${key} = ?`);
+      params.push(req.body[key]);
+    }
+  }
+  if (!sets.length) return res.json(itinerary);
+
+  sets.push("updated_at = datetime('now')");
+  params.push(req.params.id);
+  db.prepare(`UPDATE itineraries SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  res.json(db.prepare('SELECT * FROM itineraries WHERE id = ?').get(req.params.id));
+});
+
+app.delete('/api/itineraries/:id', (req, res) => {
+  const info = db.prepare('DELETE FROM itineraries WHERE id = ?').run(req.params.id);
+  if (!info.changes) return res.status(404).json({ error: 'not found' });
+  res.json({ deleted: true });
+});
+
+// --- Itinerary Propose (Phase 1 LLM) ---
+
+app.post('/api/itineraries/:id/propose', async (req, res) => {
+  const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(req.params.id);
+  if (!itinerary) return res.status(404).json({ error: 'not found' });
+
+  let cardIds;
+  try { cardIds = JSON.parse(itinerary.card_ids); } catch { cardIds = []; }
+  if (!cardIds.length) return res.status(400).json({ error: 'no cards in itinerary' });
+
+  const placeholders = cardIds.map(() => '?').join(',');
+  const cards = db.prepare(`SELECT * FROM cards WHERE id IN (${placeholders})`).all(...cardIds);
+
+  // Load trip settings for date context
+  const settingsRows = db.prepare('SELECT key, value FROM settings').all();
+  const settings = {};
+  for (const row of settingsRows) {
+    try { settings[row.key] = JSON.parse(row.value); } catch { settings[row.key] = row.value; }
+  }
+
+  // Load flights for context
+  const flights = db.prepare('SELECT * FROM flights ORDER BY departure_time').all();
+
+  const cardList = cards.map(c => {
+    let entry = `- ${c.title} [${c.category}]`;
+    if (c.address) entry += ` @ ${c.address}`;
+    if (c.lat && c.lng) entry += ` (${c.lat}, ${c.lng})`;
+    if (c.description) entry += ` — ${c.description}`;
+    if (c.timing) entry += ` | Timing: ${c.timing}`;
+    return entry;
+  }).join('\n');
+
+  let flightContext = '';
+  if (flights.length) {
+    const outbound = flights.find(f => f.direction === 'outbound');
+    const returnFlight = flights.find(f => f.direction === 'return');
+    if (outbound) flightContext += `\nOutbound flight: ${outbound.airline || ''} ${outbound.flight_number || ''}, departs ${outbound.departure_airport || ''} ${outbound.departure_time || ''}, arrives ${outbound.arrival_airport || ''} ${outbound.arrival_time || ''}`;
+    if (returnFlight) flightContext += `\nReturn flight: ${returnFlight.airline || ''} ${returnFlight.flight_number || ''}, departs ${returnFlight.departure_airport || ''} ${returnFlight.departure_time || ''}, arrives ${returnFlight.arrival_airport || ''} ${returnFlight.arrival_time || ''}`;
+  }
+
+  const dateInfo = settings.dateFrom && settings.dateTo
+    ? `Trip dates: ${settings.dateFrom} to ${settings.dateTo}`
+    : 'Trip dates: flexible';
+
+  const systemPrompt = `You are a Japan travel logistics expert. Given a list of approved places with their locations, propose a sensible day-by-day grouping.
+
+Return ONLY a valid JSON object (no markdown fences, no commentary) with this exact structure:
+{
+  "days": [
+    {
+      "day": 1,
+      "title": "Short theme title for the day",
+      "card_ids": [3, 7, 12],
+      "rationale": "Brief explanation of why these are grouped",
+      "estimated_walking_km": 3.2,
+      "estimated_transit_mins": 25
+    }
+  ],
+  "optimization_options": [
+    {
+      "key": "minimal_walking",
+      "label": "Minimize Walking",
+      "description": "Prioritize subway/train connections, limit walking"
+    },
+    {
+      "key": "cultural_flow",
+      "label": "Cultural Flow",
+      "description": "Group by theme — temples one day, food districts another"
+    },
+    {
+      "key": "balanced",
+      "label": "Balanced Pace",
+      "description": "Mix of walking and transit, varied activities each day"
+    }
+  ]
+}
+
+Rules:
+- Every card_id from the input must appear in exactly one day
+- Group geographically close places on the same day
+- Consider opening hours and logical visit order
+- Account for jet lag on day 1 if flight info is provided — keep it light
+- The last day before a return flight should allow time to get to the airport`;
+
+  const userPrompt = `${dateInfo}
+Group: ${settings.adults || 2} adults${settings.children?.length ? `, ${settings.children.length} children (ages: ${settings.children.join(', ')})` : ''}
+${flightContext}
+
+APPROVED PLACES:
+${cardList}
+
+Propose a day-by-day grouping. Each day should have 2-5 stops. Return the JSON.`;
+
+  // SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.write(`data: ${JSON.stringify({ status: 'Analyzing your places...' })}\n\n`);
+
+  try {
+    const raw = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ], 4096);
+
+    // Parse the proposal JSON
+    let proposal;
+    try {
+      let jsonStr = raw;
+      const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) jsonStr = fenceMatch[1].trim();
+      const objMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (objMatch) jsonStr = objMatch[0];
+      proposal = JSON.parse(jsonStr);
+    } catch {
+      res.write(`data: ${JSON.stringify({ error: 'Failed to parse proposal from LLM' })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+
+    if (!proposal.days || !Array.isArray(proposal.days)) {
+      res.write(`data: ${JSON.stringify({ error: 'Invalid proposal structure' })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+
+    // Save proposal to itinerary
+    db.prepare(`UPDATE itineraries SET proposal_json = ?, phase = 'proposal', updated_at = datetime('now') WHERE id = ?`)
+      .run(JSON.stringify(proposal), req.params.id);
+
+    // Create itinerary_days rows
+    db.prepare('DELETE FROM itinerary_days WHERE itinerary_id = ?').run(req.params.id);
+    const dayStmt = db.prepare(`
+      INSERT INTO itinerary_days (itinerary_id, day_number, title, stops_json)
+      VALUES (?, ?, ?, ?)
+    `);
+    for (const day of proposal.days) {
+      const stops = (day.card_ids || []).map((cid, order) => ({ card_id: cid, order }));
+      dayStmt.run(req.params.id, day.day, day.title || `Day ${day.day}`, JSON.stringify(stops));
+    }
+
+    res.write(`data: ${JSON.stringify({ proposal, status: 'done' })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }
+});
+
+// --- Itinerary Finalize (Phase 2 LLM) ---
+
+app.post('/api/itineraries/:id/finalize', async (req, res) => {
+  const { optimization } = req.body;
+  const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(req.params.id);
+  if (!itinerary) return res.status(404).json({ error: 'not found' });
+
+  let proposal;
+  try { proposal = JSON.parse(itinerary.proposal_json); } catch {
+    return res.status(400).json({ error: 'no proposal to finalize' });
+  }
+
+  let cardIds;
+  try { cardIds = JSON.parse(itinerary.card_ids); } catch { cardIds = []; }
+  const placeholders = cardIds.map(() => '?').join(',');
+  const cards = db.prepare(`SELECT * FROM cards WHERE id IN (${placeholders})`).all(...cardIds);
+  const cardMap = {};
+  for (const c of cards) cardMap[c.id] = c;
+
+  const settingsRows = db.prepare('SELECT key, value FROM settings').all();
+  const settings = {};
+  for (const row of settingsRows) {
+    try { settings[row.key] = JSON.parse(row.value); } catch { settings[row.key] = row.value; }
+  }
+
+  const flights = db.prepare('SELECT * FROM flights ORDER BY departure_time').all();
+  let flightContext = '';
+  if (flights.length) {
+    const outbound = flights.find(f => f.direction === 'outbound');
+    const returnFlight = flights.find(f => f.direction === 'return');
+    if (outbound) flightContext += `\nOutbound: ${outbound.airline || ''} ${outbound.flight_number || ''}, arrives ${outbound.arrival_airport || ''} at ${outbound.arrival_time || ''}`;
+    if (returnFlight) flightContext += `\nReturn: ${returnFlight.airline || ''} ${returnFlight.flight_number || ''}, departs ${returnFlight.departure_airport || ''} at ${returnFlight.departure_time || ''}`;
+  }
+
+  // Build detailed card info for each proposed day
+  const daysDescription = proposal.days.map(day => {
+    const stopDetails = (day.card_ids || []).map(cid => {
+      const c = cardMap[cid];
+      if (!c) return `- [Unknown card ${cid}]`;
+      let entry = `- ${c.title} [${c.category}] @ ${c.address || 'no address'}`;
+      if (c.timing) entry += ` | ${c.timing}`;
+      return entry;
+    }).join('\n');
+    return `Day ${day.day} — "${day.title}":\n${stopDetails}`;
+  }).join('\n\n');
+
+  const systemPrompt = `You are a Japan travel expert creating a finalized day-by-day itinerary.
+
+Return ONLY a valid JSON object (no markdown, no commentary) with this structure:
+{
+  "days": [
+    {
+      "day": 1,
+      "title": "Day theme title",
+      "date": "2025-04-01",
+      "stops": [
+        {
+          "card_id": 3,
+          "order": 0,
+          "suggested_time": "09:00",
+          "duration_mins": 90,
+          "note": "Brief practical tip for this stop"
+        }
+      ]
+    }
+  ]
+}
+
+Rules:
+- Maintain the same day groupings from the proposal
+- Order stops within each day for optimal flow based on the "${optimization || 'balanced'}" optimization
+- Include realistic suggested_time values based on opening hours and travel time
+- Account for meals (leave gaps for lunch/dinner near restaurant stops)
+- Day 1 should account for jet lag/arrival time if flight info is provided
+- Last day should leave time for airport transfer if return flight info is provided`;
+
+  const userPrompt = `Trip: ${settings.dateFrom || 'flexible'} to ${settings.dateTo || 'flexible'}
+Optimization: ${optimization || 'balanced'}
+${flightContext}
+
+PROPOSED DAY GROUPINGS:
+${daysDescription}
+
+Finalize the schedule with ordered stops and timing. Return the JSON.`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.write(`data: ${JSON.stringify({ status: 'Building your schedule...' })}\n\n`);
+
+  try {
+    const raw = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ], 4096);
+
+    let finalData;
+    try {
+      let jsonStr = raw;
+      const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) jsonStr = fenceMatch[1].trim();
+      const objMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (objMatch) jsonStr = objMatch[0];
+      finalData = JSON.parse(jsonStr);
+    } catch {
+      res.write(`data: ${JSON.stringify({ error: 'Failed to parse finalized plan from LLM' })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+
+    // Save final data
+    db.prepare(`UPDATE itineraries SET final_json = ?, optimization = ?, phase = 'final', updated_at = datetime('now') WHERE id = ?`)
+      .run(JSON.stringify(finalData), optimization || 'balanced', req.params.id);
+
+    // Update itinerary_days with ordered stops
+    db.prepare('DELETE FROM itinerary_days WHERE itinerary_id = ?').run(req.params.id);
+    const dayStmt = db.prepare(`
+      INSERT INTO itinerary_days (itinerary_id, day_number, date, title, stops_json)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    for (const day of (finalData.days || [])) {
+      dayStmt.run(
+        req.params.id,
+        day.day,
+        day.date || null,
+        day.title || `Day ${day.day}`,
+        JSON.stringify(day.stops || [])
+      );
+    }
+
+    // Fetch directions for each day and store polylines
+    res.write(`data: ${JSON.stringify({ status: 'Fetching routes...' })}\n\n`);
+    const dayRows = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? ORDER BY day_number').all(req.params.id);
+    for (const dayRow of dayRows) {
+      let stops;
+      try { stops = JSON.parse(dayRow.stops_json); } catch { continue; }
+      if (stops.length < 2) continue;
+
+      const waypoints = stops.map(s => {
+        const card = cardMap[s.card_id];
+        return card ? { lat: card.lat, lng: card.lng } : null;
+      }).filter(Boolean);
+
+      if (waypoints.length < 2) continue;
+
+      const legs = [];
+      for (let i = 0; i < waypoints.length - 1; i++) {
+        try {
+          const origin = `${waypoints[i].lat},${waypoints[i].lng}`;
+          const dest = `${waypoints[i + 1].lat},${waypoints[i + 1].lng}`;
+          const dirResult = await fetchDirections(origin, dest);
+          legs.push(dirResult);
+        } catch {
+          legs.push({ duration: 'unknown', distance: 'unknown', polyline: null });
+        }
+      }
+
+      db.prepare('UPDATE itinerary_days SET legs_json = ? WHERE id = ?')
+        .run(JSON.stringify(legs), dayRow.id);
+    }
+
+    res.write(`data: ${JSON.stringify({ finalData, status: 'done' })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }
+});
+
+// --- Per-Day Enrichment (SSE) ---
+
+app.post('/api/itineraries/:id/days/:dayNum/enrich', async (req, res) => {
+  const { id, dayNum } = req.params;
+  const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(id);
+  if (!itinerary) return res.status(404).json({ error: 'itinerary not found' });
+
+  const dayRow = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? AND day_number = ?').get(id, dayNum);
+  if (!dayRow) return res.status(404).json({ error: 'day not found' });
+
+  // If already enriched, return cached
+  if (dayRow.enrichment_status === 'done' && dayRow.enrichment_md) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.write(`data: ${JSON.stringify({ delta: dayRow.enrichment_md })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    return res.end();
+  }
+
+  let stops;
+  try { stops = JSON.parse(dayRow.stops_json); } catch { stops = []; }
+  const cardIds = stops.map(s => s.card_id);
+  if (!cardIds.length) return res.status(400).json({ error: 'no stops in this day' });
+
+  const placeholders = cardIds.map(() => '?').join(',');
+  const cards = db.prepare(`SELECT * FROM cards WHERE id IN (${placeholders})`).all(...cardIds);
+
+  // Load flights for day 1 / last day context
+  const flights = db.prepare('SELECT * FROM flights ORDER BY departure_time').all();
+  const allDays = db.prepare('SELECT day_number FROM itinerary_days WHERE itinerary_id = ? ORDER BY day_number').all(id);
+  const isFirstDay = parseInt(dayNum) === allDays[0]?.day_number;
+  const isLastDay = parseInt(dayNum) === allDays[allDays.length - 1]?.day_number;
+
+  let flightContext = '';
+  if (isFirstDay) {
+    const outbound = flights.find(f => f.direction === 'outbound');
+    if (outbound) flightContext = `\n\nFLIGHT CONTEXT: You arrive on ${outbound.airline || ''} ${outbound.flight_number || ''} at ${outbound.arrival_airport || ''} at ${outbound.arrival_time || ''}. Account for jet lag, immigration, and transit to the city.`;
+  }
+  if (isLastDay) {
+    const returnFlight = flights.find(f => f.direction === 'return');
+    if (returnFlight) flightContext += `\n\nFLIGHT CONTEXT: Return flight ${returnFlight.airline || ''} ${returnFlight.flight_number || ''} departs ${returnFlight.departure_airport || ''} at ${returnFlight.departure_time || ''}. Plan time to get to the airport and check in.`;
+  }
+
+  const stopList = stops.map((s, i) => {
+    const card = cards.find(c => c.id === s.card_id);
+    if (!card) return '';
+    let entry = `${i + 1}. **${card.title}** [${card.category}]`;
+    if (s.suggested_time) entry += ` — arrive ~${s.suggested_time}`;
+    if (s.duration_mins) entry += `, spend ~${s.duration_mins} mins`;
+    if (card.address) entry += `\n   Address: ${card.address}`;
+    if (card.description) entry += `\n   ${card.description}`;
+    if (s.note) entry += `\n   Note: ${s.note}`;
+    return entry;
+  }).filter(Boolean).join('\n\n');
+
+  const systemPrompt = `You are a Japan travel expert writing a vivid, practical day guide. Write in a warm, knowledgeable tone. Use markdown formatting.`;
+
+  const userPrompt = `Write a detailed guide for Day ${dayNum}: "${dayRow.title}"
+
+STOPS FOR THIS DAY:
+${stopList}
+${flightContext}
+
+For each stop, include:
+- A vivid 2-3 sentence description of what to expect
+- Best timing tips (crowds, lighting, seasonal notes)
+- Practical tips (cash vs card, etiquette, what to wear/bring)
+- How to book if needed (apps, websites, walk-in)
+
+Between stops, include:
+- How to get there (which train line, which exit, walking directions)
+- What you'll pass along the way worth noting
+
+End with:
+- A meal recommendation for this day (if no restaurant is already in the stops)
+- One insider tip for the area`;
+
+  // SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  db.prepare('UPDATE itinerary_days SET enrichment_status = ? WHERE id = ?').run('streaming', dayRow.id);
+
+  try {
+    const body = {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+        { role: 'assistant', content: '<think>\n</think>\n', prefix: true },
+      ],
+      stream: true,
+    };
+    if (LM_STUDIO_MODEL) body.model = LM_STUDIO_MODEL;
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (LM_STUDIO_API_KEY) headers['Authorization'] = `Bearer ${LM_STUDIO_API_KEY}`;
+
+    const upstream = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!upstream.ok) {
+      db.prepare('UPDATE itinerary_days SET enrichment_status = ? WHERE id = ?').run('error', dayRow.id);
+      res.write(`data: ${JSON.stringify({ error: `LLM error: ${upstream.status}` })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+
+    let fullContent = '';
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+    let streamBuffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      streamBuffer += decoder.decode(value, { stream: true });
+      const lines = streamBuffer.split('\n');
+      streamBuffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
+        const payload = trimmed.slice(5).trim();
+        if (payload === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(payload);
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (delta) {
+            fullContent += delta;
+            res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+          }
+        } catch {}
+      }
+    }
+
+    // Strip think tags and save
+    fullContent = fullContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    db.prepare('UPDATE itinerary_days SET enrichment_md = ?, enrichment_status = ? WHERE id = ?')
+      .run(fullContent, 'done', dayRow.id);
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (err) {
+    db.prepare('UPDATE itinerary_days SET enrichment_status = ? WHERE id = ?').run('error', dayRow.id);
+    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }
+});
+
+// --- Flights CRUD ---
+
+app.get('/api/flights', (req, res) => {
+  res.json(db.prepare('SELECT * FROM flights ORDER BY departure_time').all());
+});
+
+app.post('/api/flights', (req, res) => {
+  const { direction, airline, flight_number, departure_airport, arrival_airport, departure_time, arrival_time, departure_tz, arrival_tz, notes } = req.body;
+  if (!direction || !['outbound', 'return'].includes(direction)) {
+    return res.status(400).json({ error: 'direction must be "outbound" or "return"' });
+  }
+
+  const stmt = db.prepare(`
+    INSERT INTO flights (direction, airline, flight_number, departure_airport, arrival_airport, departure_time, arrival_time, departure_tz, arrival_tz, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const info = stmt.run(direction, airline || null, flight_number || null, departure_airport || null, arrival_airport || null, departure_time || null, arrival_time || null, departure_tz || null, arrival_tz || null, notes || null);
+  res.status(201).json(db.prepare('SELECT * FROM flights WHERE id = ?').get(info.lastInsertRowid));
+});
+
+app.patch('/api/flights/:id', (req, res) => {
+  const flight = db.prepare('SELECT * FROM flights WHERE id = ?').get(req.params.id);
+  if (!flight) return res.status(404).json({ error: 'not found' });
+
+  const allowed = ['direction', 'airline', 'flight_number', 'departure_airport', 'arrival_airport', 'departure_time', 'arrival_time', 'departure_tz', 'arrival_tz', 'notes'];
+  const sets = [];
+  const params = [];
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) {
+      sets.push(`${key} = ?`);
+      params.push(req.body[key]);
+    }
+  }
+  if (!sets.length) return res.json(flight);
+
+  params.push(req.params.id);
+  db.prepare(`UPDATE flights SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  res.json(db.prepare('SELECT * FROM flights WHERE id = ?').get(req.params.id));
+});
+
+app.delete('/api/flights/:id', (req, res) => {
+  const info = db.prepare('DELETE FROM flights WHERE id = ?').run(req.params.id);
+  if (!info.changes) return res.status(404).json({ error: 'not found' });
+  res.json({ deleted: true });
 });
 
 const PORT = process.env.PORT || 3737;

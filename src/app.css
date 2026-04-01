@@ -262,7 +262,7 @@ a:hover {
   text-decoration: underline;
 }
 
-/* --- Floating generate bar --- */
+/* --- Floating generate bar (Board only) --- */
 .gen-bar {
   position: fixed;
   bottom: 1.2rem;
@@ -356,25 +356,6 @@ a:hover {
   50% { opacity: 0.4; }
 }
 
-.gen-cancel {
-  font-family: var(--font-body);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 0.4rem 0.9rem;
-  border: 1px solid var(--red);
-  border-radius: 100px;
-  background: transparent;
-  color: var(--red);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.gen-cancel:hover {
-  background: var(--red);
-  color: var(--paper);
-}
-
 .gen-done-status {
   position: absolute;
   top: -1.6rem;
@@ -429,6 +410,11 @@ a:hover {
   .gen-bar {
     width: 95%;
     bottom: 0.6rem;
+  }
+
+  /* Prevent iOS zoom on focus — inputs must be >= 16px */
+  input, textarea, select {
+    font-size: 16px !important;
   }
 }
 

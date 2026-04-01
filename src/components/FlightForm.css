@@ -1,0 +1,161 @@
+.flight-form-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(18, 16, 14, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.flight-form {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  width: 90%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.flight-form-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+.flight-form-row {
+  margin-bottom: 0.8rem;
+}
+
+.flight-form-label {
+  display: block;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+.flight-form-toggle {
+  display: flex;
+  gap: 0;
+}
+
+.flight-form-toggle button {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.flight-form-toggle button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.flight-form-toggle button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+  border-left: none;
+}
+
+.flight-form-toggle button.active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.flight-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.flight-form-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.flight-form-field.full {
+  margin-bottom: 0.8rem;
+}
+
+.flight-form-field label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+.flight-form-field input,
+.flight-form-field textarea {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  transition: border-color 0.15s;
+}
+
+.flight-form-field input:focus,
+.flight-form-field textarea:focus {
+  outline: none;
+  border-color: var(--ink);
+}
+
+.flight-form-field textarea {
+  resize: vertical;
+}
+
+.flight-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.flight-form-cancel {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.flight-form-cancel:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.flight-form-save {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.flight-form-save:hover {
+  opacity: 0.85;
+}

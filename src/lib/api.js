@@ -172,3 +172,163 @@ export async function* streamItinerary(cardIds) {
     }
   }
 }
+
+// --- Itineraries ---
+
+export async function createItinerary(cardIds, name) {
+  const res = await fetch(`${BASE}/itineraries`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ card_ids: cardIds, name }),
+  });
+  if (!res.ok) throw new Error('Failed to create itinerary');
+  return res.json();
+}
+
+export async function fetchItineraries() {
+  const res = await fetch(`${BASE}/itineraries`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchItinerary(id) {
+  const res = await fetch(`${BASE}/itineraries/${id}`);
+  if (!res.ok) throw new Error('Failed to fetch itinerary');
+  return res.json();
+}
+
+export async function updateItinerary(id, data) {
+  const res = await fetch(`${BASE}/itineraries/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update itinerary');
+  return res.json();
+}
+
+export async function deleteItinerary(id) {
+  const res = await fetch(`${BASE}/itineraries/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete itinerary');
+  return res.json();
+}
+
+// SSE helper for streaming endpoints that return status + final data
+async function streamSSE(url, body, onStatus) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const payload = trimmed.slice(5).trim();
+      if (payload === '[DONE]') return result;
+
+      try {
+        const parsed = JSON.parse(payload);
+        if (parsed.error) throw new Error(parsed.error);
+        if (parsed.status && parsed.status !== 'done' && onStatus) onStatus(parsed.status);
+        if (parsed.proposal) result = { proposal: parsed.proposal };
+        if (parsed.finalData) result = { finalData: parsed.finalData };
+      } catch (e) {
+        if (e.message && !e.message.includes('JSON')) throw e;
+      }
+    }
+  }
+  return result;
+}
+
+export async function proposeItinerary(id, onStatus) {
+  return streamSSE(`${BASE}/itineraries/${id}/propose`, {}, onStatus);
+}
+
+export async function finalizeItinerary(id, optimization, onStatus) {
+  return streamSSE(`${BASE}/itineraries/${id}/finalize`, { optimization }, onStatus);
+}
+
+export async function* streamDayEnrichment(itineraryId, dayNum) {
+  const res = await fetch(`${BASE}/itineraries/${itineraryId}/days/${dayNum}/enrich`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('Failed to start enrichment');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith('data:')) continue;
+      const payload = trimmed.slice(5).trim();
+      if (payload === '[DONE]') return;
+
+      try {
+        const parsed = JSON.parse(payload);
+        if (parsed.error) throw new Error(parsed.error);
+        if (parsed.delta) yield parsed.delta;
+      } catch (e) {
+        if (e.message && !e.message.includes('JSON')) throw e;
+      }
+    }
+  }
+}
+
+// --- Flights ---
+
+export async function fetchFlights() {
+  const res = await fetch(`${BASE}/flights`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function createFlight(data) {
+  const res = await fetch(`${BASE}/flights`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to create flight');
+  return res.json();
+}
+
+export async function updateFlight(id, data) {
+  const res = await fetch(`${BASE}/flights/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update flight');
+  return res.json();
+}
+
+export async function deleteFlight(id) {
+  const res = await fetch(`${BASE}/flights/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete flight');
+  return res.json();
+}
