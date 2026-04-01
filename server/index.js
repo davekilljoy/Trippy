@@ -319,30 +319,58 @@ app.post('/api/directions', async (req, res) => {
 
 // --- Robust JSON parser for LLM output ---
 
+// Fix Python-style single-quoted dicts to valid JSON
+function fixQuotes(str) {
+  let out = '';
+  let inDouble = false;
+  let inSingle = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    const prev = str[i - 1];
+    if (ch === '"' && prev !== '\\' && !inSingle) {
+      inDouble = !inDouble;
+      out += ch;
+    } else if (ch === "'" && prev !== '\\' && !inDouble) {
+      if (!inSingle) {
+        inSingle = true;
+        out += '"';
+      } else {
+        inSingle = false;
+        out += '"';
+      }
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
 function robustParseIdeas(raw) {
   // Try direct parse first
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object') return parsed;
-    // Unwrap nested strings
     return unwrapIdeas(parsed);
   } catch {}
 
-  // Try extracting individual JSON objects with regex
+  // Try fixing single quotes then parse
+  try {
+    const fixed = fixQuotes(raw);
+    const parsed = JSON.parse(fixed);
+    if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object') return parsed;
+    return unwrapIdeas(parsed);
+  } catch {}
+
+  // Last resort: extract individual objects with regex (handles both quote styles)
   const objects = [];
-  const objRegex = /\{[^{}]*"title"\s*:\s*"[^"]*"[^{}]*\}/g;
+  const objRegex = /\{[^{}]*(?:"|')title(?:"|')\s*:\s*(?:"|')[^"']*(?:"|')[^{}]*\}/g;
   let match;
   while ((match = objRegex.exec(raw)) !== null) {
     try {
       objects.push(JSON.parse(match[0]));
     } catch {
-      // Try fixing common issues: unescaped quotes
       try {
-        const fixed = match[0].replace(/([^\\])"/g, (m, p1, offset) => {
-          // Only fix quotes that aren't part of JSON structure
-          return m;
-        });
-        objects.push(JSON.parse(fixed));
+        objects.push(JSON.parse(fixQuotes(match[0])));
       } catch {}
     }
   }
@@ -356,14 +384,18 @@ function unwrapIdeas(val) {
     if (typeof item === 'object' && item !== null && item.title) {
       results.push(item);
     } else if (typeof item === 'string') {
-      try {
-        const parsed = JSON.parse(item);
-        if (Array.isArray(parsed)) {
-          results.push(...unwrapIdeas(parsed));
-        } else if (typeof parsed === 'object' && parsed?.title) {
-          results.push(parsed);
-        }
-      } catch {}
+      // Try parse as-is, then with fixed quotes
+      for (const attempt of [item, fixQuotes(item)]) {
+        try {
+          const parsed = JSON.parse(attempt);
+          if (Array.isArray(parsed)) {
+            results.push(...unwrapIdeas(parsed));
+          } else if (typeof parsed === 'object' && parsed?.title) {
+            results.push(parsed);
+          }
+          break;
+        } catch {}
+      }
     }
   }
   return results;
@@ -550,7 +582,7 @@ async function callLLM(messages, maxTokens = 4096) {
   const headers = { 'Content-Type': 'application/json' };
   if (LM_STUDIO_API_KEY) headers['Authorization'] = `Bearer ${LM_STUDIO_API_KEY}`;
 
-  // Empty think tags trick Qwen into skipping reasoning
+  // Suppress thinking with empty think tags
   const patched = [
     ...messages,
     { role: 'assistant', content: '<think>\n</think>\n', prefix: true },
@@ -571,9 +603,8 @@ async function callLLM(messages, maxTokens = 4096) {
   if (!res.ok) throw new Error(`LLM error: ${res.status}`);
   const data = await res.json();
   const msg = data.choices?.[0]?.message;
-  // Qwen may put output in content or reasoning_content
-  const text = msg?.content?.trim() || msg?.reasoning_content?.trim() || '';
-  // Strip any <think>...</think> blocks that leaked through
+  const text = msg?.content?.trim() || '';
+  // Strip any <think>...</think> blocks
   return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
 
@@ -676,26 +707,29 @@ app.post('/api/cards/generate', async (req, res) => {
   const dest = destination || 'Japan';
   const userPrompt = prompt || '';
 
-  // Step 1: Classify what categories the user wants
+  // Step 1: Classify intent
   sendStatus('Understanding what you\'re looking for...');
   const classifyRaw = await callLLM([
-    { role: 'system', content: 'You classify user intent for a Japan trip planner. Return ONLY a JSON object with two fields: "categories" (array of relevant categories from: restaurant, attraction, experience, hotel, shopping, transport) and "count" (total number of ideas to generate, 8-15). No explanation.' },
-    { role: 'user', content: `User query: "${userPrompt}"\n\nWhich categories match this query? If the query is broad or empty, include all categories. If specific (e.g. "food" = restaurant, "places to visit" = attraction+experience, "where to stay" = hotel), only include relevant ones.` },
-  ], 100);
+    { role: 'system', content: 'You classify user intent for a Japan trip planner. Return ONLY a JSON object with two fields: "categories" (array from: restaurant, attraction, experience, hotel, shopping, transport) and "count" (number 8-15). No explanation.' },
+    { role: 'user', content: `User query: "${userPrompt}"\n\nWhich categories match? Broad/empty = all categories. Specific (food = restaurant, sightseeing = attraction+experience, accommodation = hotel) = only relevant ones.` },
+  ], 500);
 
   let categories = ['restaurant', 'attraction', 'experience', 'hotel', 'shopping', 'transport'];
-  let totalCount = 15;
+  let totalCount = 10;
   try {
-    const fenced = classifyRaw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonStr = fenced ? fenced[1].trim() : classifyRaw.match(/\{[\s\S]*\}/)?.[0] || classifyRaw;
-    const parsed = JSON.parse(jsonStr);
-    if (Array.isArray(parsed.categories) && parsed.categories.length > 0) {
-      categories = parsed.categories.filter(c =>
-        ['restaurant', 'attraction', 'experience', 'hotel', 'shopping', 'transport'].includes(c)
-      );
-      if (categories.length === 0) categories = ['restaurant', 'attraction', 'experience', 'hotel', 'shopping', 'transport'];
+    // Strip thinking, then extract JSON
+    const cleaned = classifyRaw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(fixQuotes(jsonMatch[0]));
+      if (Array.isArray(parsed.categories) && parsed.categories.length > 0) {
+        categories = parsed.categories.filter(c =>
+          ['restaurant', 'attraction', 'experience', 'hotel', 'shopping', 'transport'].includes(c)
+        );
+        if (categories.length === 0) categories = ['restaurant', 'attraction', 'experience', 'hotel', 'shopping', 'transport'];
+      }
+      if (parsed.count >= 3 && parsed.count <= 20) totalCount = parsed.count;
     }
-    if (parsed.count >= 3 && parsed.count <= 20) totalCount = parsed.count;
   } catch {
     // Fall back to all categories
   }
@@ -704,9 +738,9 @@ app.post('/api/cards/generate', async (req, res) => {
     ? `Generate ${totalCount} ideas spread across these categories: restaurant, attraction, experience, hotel, shopping, transport.`
     : `Generate ${totalCount} ideas focused on: ${categories.join(', ')}. Spread them evenly across these categories.`;
 
+  // Step 2: Search Tavily
   sendStatus(`Searching for ${categories.join(', ')} ideas...`);
 
-  // Step 2: Search Tavily with refined query
   const webContext = await tavilySearch(
     `best ${categories.join(' ')} in ${dest} ${dateFrom || ''} ${userPrompt}`,
     5
@@ -1000,7 +1034,14 @@ app.get('/api/itineraries/:id', (req, res) => {
   let final_data;
   try { final_data = JSON.parse(itinerary.final_json || 'null'); } catch { final_data = null; }
 
-  res.json({ ...itinerary, card_ids: cardIds, proposal, final_data, days });
+  // Include actual card data so frontend doesn't depend on current approvedCards
+  let cards = [];
+  if (cardIds.length) {
+    const placeholders = cardIds.map(() => '?').join(',');
+    cards = db.prepare(`SELECT * FROM cards WHERE id IN (${placeholders})`).all(...cardIds);
+  }
+
+  res.json({ ...itinerary, card_ids: cardIds, proposal, final_data, days, cards });
 });
 
 app.patch('/api/itineraries/:id', (req, res) => {
