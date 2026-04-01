@@ -299,6 +299,16 @@ export async function* streamDayEnrichment(itineraryId, dayNum) {
   }
 }
 
+// Load day routes (walking + LLM transit)
+export async function loadDayRoutes(itineraryId, dayNum) {
+  const res = await fetch(`${BASE}/itineraries/${itineraryId}/days/${dayNum}/load`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('Failed to load day routes');
+  return res.json();
+}
+
 // --- Flights ---
 
 export async function fetchFlights() {

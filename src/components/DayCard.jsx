@@ -1,12 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { streamDayEnrichment } from '../lib/api.js';
 import DayMap from './DayMap.jsx';
 import './DayCard.css';
 
-export default function DayCard({ day, cards, itineraryId }) {
+export default function DayCard({ day, cards, itineraryId, liveData }) {
   const [enrichment, setEnrichment] = useState(day.enrichment_md || '');
   const [enrichStatus, setEnrichStatus] = useState(day.enrichment_status || 'pending');
-  const [expanded, setExpanded] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef(false);
 
@@ -14,17 +13,24 @@ export default function DayCard({ day, cards, itineraryId }) {
   const cardMap = {};
   for (const c of cards) cardMap[c.id] = c;
 
+  // Find hotel (single hotel = base for whole trip)
+  const hotel = cards.find(c => c.category === 'hotel' && c.lat && c.lng) || null;
+
   const stops = (day.stops || []).map(s => {
     const card = cardMap[s.card_id];
-    return card ? { ...card, ...s } : null;
-  }).filter(Boolean);
+    if (card) return { ...card, ...s };
+    return { id: s.card_id, title: `Stop ${s.order + 1}`, category: '?', ...s };
+  });
 
+  // Use live route data if available, otherwise stored
+  const legs = liveData?.legs?.length ? liveData.legs : (day.legs || []);
+
+  // On-demand enrichment
   const handleEnrich = useCallback(async () => {
     if (streaming) return;
     setStreaming(true);
     setEnrichStatus('streaming');
     setEnrichment('');
-    setExpanded(true);
     abortRef.current = false;
 
     try {
@@ -35,20 +41,12 @@ export default function DayCard({ day, cards, itineraryId }) {
         setEnrichment(text);
       }
       setEnrichStatus('done');
-    } catch (err) {
+    } catch {
       setEnrichStatus('error');
     } finally {
       setStreaming(false);
     }
   }, [itineraryId, day.day_number, streaming]);
-
-  // If already enriched, show it
-  useEffect(() => {
-    if (day.enrichment_md && day.enrichment_status === 'done') {
-      setEnrichment(day.enrichment_md);
-      setEnrichStatus('done');
-    }
-  }, [day.enrichment_md, day.enrichment_status]);
 
   return (
     <div className="day-card">
@@ -75,17 +73,19 @@ export default function DayCard({ day, cards, itineraryId }) {
               {stop.address && <small className="day-card-stop-addr">{stop.address}</small>}
               {stop.note && <span className="day-card-stop-note">{stop.note}</span>}
             </div>
-            {day.legs?.[i] && (
-              <span className="day-card-stop-travel">
-                → {day.legs[i].duration} ({day.legs[i].distance})
-              </span>
+            {legs[i] && (
+              <div className="day-card-stop-travel">
+                <span className="travel-time">→ {legs[i].duration}{legs[i].distance ? ` (${legs[i].distance})` : ''}</span>
+                {legs[i].summary && <span className="travel-summary">{legs[i].summary}</span>}
+              </div>
             )}
           </div>
         ))}
       </div>
 
-      <DayMap stops={stops} legs={day.legs || []} />
+      <DayMap stops={stops} legs={legs} hotel={hotel} />
 
+      {/* Enrichment: on-demand */}
       <div className="day-card-enrichment">
         {enrichStatus === 'pending' && (
           <button className="enrich-btn" onClick={handleEnrich}>
@@ -94,31 +94,17 @@ export default function DayCard({ day, cards, itineraryId }) {
         )}
         {enrichStatus === 'error' && (
           <button className="enrich-btn enrich-retry" onClick={handleEnrich}>
-            Retry enrichment
+            Retry
           </button>
         )}
         {enrichment && (
-          <>
-            <button
-              className="enrich-toggle"
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? 'Hide' : 'Show'} tips & details
-              {streaming && <span className="enrich-streaming"> (loading...)</span>}
-            </button>
-            {expanded && (
-              <div className="enrich-content">
-                <div
-                  className="markdown-body"
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(enrichment) }}
-                />
-                {streaming && <span className="stream-cursor" />}
-              </div>
-            )}
-          </>
-        )}
-        {enrichStatus === 'done' && enrichment && !expanded && (
-          <span className="enrich-ready">Tips ready</span>
+          <div className="enrich-content">
+            <div
+              className="markdown-body"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(enrichment) }}
+            />
+            {streaming && <span className="stream-cursor" />}
+          </div>
         )}
       </div>
     </div>

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useMemo } from 'react';
-import { Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
+import { useEffect, useRef, useMemo, useCallback } from 'react';
+import { Map, Marker, useMap } from '@vis.gl/react-google-maps';
 import './DayMap.css';
 
 // Decode Google encoded polyline to array of {lat, lng}
@@ -29,28 +29,48 @@ function decodePolyline(encoded) {
   return points;
 }
 
-// Draw polylines on the map
-function RoutePolylines({ legs }) {
+// Draw polylines on the map — uses encoded polylines if available, falls back to straight lines
+function RoutePolylines({ legs, positions }) {
   const map = useMap();
   const polylinesRef = useRef([]);
 
   useEffect(() => {
-    if (!map || !legs?.length) return;
+    if (!map) return;
 
     // Clear old polylines
     polylinesRef.current.forEach(p => p.setMap(null));
     polylinesRef.current = [];
 
-    for (const leg of legs) {
-      if (!leg.polyline) continue;
-      const path = decodePolyline(leg.polyline);
-      if (!path.length) continue;
+    const hasEncodedPolylines = legs?.some(l => l.polyline);
 
+    if (hasEncodedPolylines) {
+      for (const leg of legs) {
+        if (!leg.polyline) continue;
+        const path = decodePolyline(leg.polyline);
+        if (!path.length) continue;
+
+        const polyline = new google.maps.Polyline({
+          path,
+          strokeColor: '#12100e',
+          strokeOpacity: 0.6,
+          strokeWeight: 3,
+          map,
+        });
+        polylinesRef.current.push(polyline);
+      }
+    } else if (positions?.length > 1) {
+      // Fallback: draw dashed straight lines between stops
       const polyline = new google.maps.Polyline({
-        path,
+        path: positions,
         strokeColor: '#12100e',
-        strokeOpacity: 0.6,
-        strokeWeight: 3,
+        strokeOpacity: 0.4,
+        strokeWeight: 2,
+        icons: [{
+          icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.4, scale: 3 },
+          offset: '0',
+          repeat: '12px',
+        }],
+        strokeOpacity: 0,
         map,
       });
       polylinesRef.current.push(polyline);
@@ -60,7 +80,7 @@ function RoutePolylines({ legs }) {
       polylinesRef.current.forEach(p => p.setMap(null));
       polylinesRef.current = [];
     };
-  }, [map, legs]);
+  }, [map, legs, positions]);
 
   return null;
 }
@@ -77,17 +97,42 @@ function FitBounds({ positions }) {
   return null;
 }
 
-export default function DayMap({ stops, legs }) {
+// Create numbered marker icon as a data URL SVG
+function numberedIcon(n) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+    <circle cx="14" cy="14" r="13" fill="%2312100e" stroke="%23f2ece0" stroke-width="2"/>
+    <text x="14" y="18" text-anchor="middle" fill="%23f2ece0" font-family="monospace" font-size="11" font-weight="bold">${n}</text>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${svg}`;
+}
+
+// Hotel marker icon (gold)
+function hotelIcon() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+    <circle cx="14" cy="14" r="13" fill="%239a7c3f" stroke="%23f2ece0" stroke-width="2"/>
+    <text x="14" y="19" text-anchor="middle" fill="%23f2ece0" font-family="monospace" font-size="13" font-weight="bold">H</text>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${svg}`;
+}
+
+export default function DayMap({ stops, legs, hotel }) {
   const positions = useMemo(() =>
     stops
       .filter(s => s.lat && s.lng)
-      .map(s => ({ lat: s.lat, lng: s.lng })),
+      .map(s => ({ lat: Number(s.lat), lng: Number(s.lng) })),
     [stops]
   );
 
-  if (positions.length === 0) return null;
+  // Include hotel in bounds fitting
+  const allPositions = useMemo(() => {
+    const pts = [...positions];
+    if (hotel?.lat && hotel?.lng) pts.push({ lat: Number(hotel.lat), lng: Number(hotel.lng) });
+    return pts;
+  }, [positions, hotel]);
 
-  const center = positions[0];
+  if (allPositions.length === 0) return null;
+
+  const center = hotel?.lat ? { lat: Number(hotel.lat), lng: Number(hotel.lng) } : allPositions[0];
 
   return (
     <div className="day-map-wrap">
@@ -98,34 +143,56 @@ export default function DayMap({ stops, legs }) {
         gestureHandling="cooperative"
         disableDefaultUI={true}
         zoomControl={true}
-        mapId="trippy-day-map"
-        styles={[
-          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-          { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-        ]}
       >
-        <FitBounds positions={positions} />
-        <RoutePolylines legs={legs} />
+        <FitBounds positions={allPositions} />
+        <RoutePolylines legs={legs} positions={allPositions} />
+
+        {/* Hotel marker */}
+        {hotel?.lat && hotel?.lng && (
+          <Marker
+            key="hotel"
+            position={{ lat: Number(hotel.lat), lng: Number(hotel.lng) }}
+            title={hotel.title || 'Hotel'}
+            icon={{
+              url: hotelIcon(),
+              scaledSize: { width: 28, height: 28 },
+              anchor: { x: 14, y: 14 },
+            }}
+          />
+        )}
+
+        {/* Stop markers */}
         {stops.map((stop, i) => (
           stop.lat && stop.lng ? (
-            <AdvancedMarker key={stop.id || i} position={{ lat: stop.lat, lng: stop.lng }}>
-              <div className="day-marker">
-                <span>{i + 1}</span>
-              </div>
-            </AdvancedMarker>
+            <Marker
+              key={stop.id || i}
+              position={{ lat: Number(stop.lat), lng: Number(stop.lng) }}
+              title={stop.title || `Stop ${i + 1}`}
+              icon={{
+                url: numberedIcon(i + 1),
+                scaledSize: { width: 28, height: 28 },
+                anchor: { x: 14, y: 14 },
+              }}
+            />
           ) : null
         ))}
       </Map>
 
       {legs && legs.length > 0 && (
         <div className="day-legs">
-          {legs.map((leg, i) => (
-            <div key={i} className="day-leg">
-              <span className="leg-num">{i + 1} → {i + 2}</span>
-              <span className="leg-duration">{leg.duration}</span>
-              <span className="leg-distance">{leg.distance}</span>
-            </div>
-          ))}
+          {legs.map((leg, i) => {
+            const hasHotel = !!hotel;
+            const fromLabel = hasHotel && i === 0 ? 'H' : hasHotel ? i : i + 1;
+            const toLabel = hasHotel && i === legs.length - 1 ? 'H' : hasHotel ? i + 1 : i + 2;
+            return (
+              <div key={i} className={`day-leg ${leg.mode === 'transit' ? 'transit' : ''}`}>
+                <span className="leg-num">{fromLabel} → {toLabel}</span>
+                <span className="leg-duration">{leg.duration}</span>
+                {leg.distance && <span className="leg-distance">{leg.distance}</span>}
+                {leg.summary && <span className="leg-summary">{leg.summary}</span>}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -6,8 +6,36 @@
   margin-bottom: 1.5rem;
 }
 
+.day-card.streaming {
+  border-color: var(--gold);
+}
+
 .day-card-header {
   margin-bottom: 1rem;
+}
+
+.day-card-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.day-card-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: day-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes day-spin {
+  to { transform: rotate(360deg); }
 }
 
 .day-card-title-row {
@@ -126,11 +154,26 @@
 }
 
 .day-card-stop-travel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  margin-top: 3px;
+  gap: 0.1rem;
+}
+
+.travel-time {
   font-size: 0.68rem;
   color: var(--gold);
   white-space: nowrap;
-  flex-shrink: 0;
-  margin-top: 3px;
+}
+
+.travel-summary {
+  font-size: 0.6rem;
+  color: var(--muted);
+  font-style: italic;
+  text-align: right;
+  max-width: 200px;
 }
 
 /* Enrichment */

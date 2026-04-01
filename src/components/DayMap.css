@@ -62,3 +62,13 @@
 .leg-distance {
   color: var(--muted);
 }
+
+.leg-summary {
+  font-size: 0.65rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.day-leg.transit {
+  border-color: var(--gold);
+}

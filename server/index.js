@@ -243,29 +243,46 @@ async function geocodeCard(card) {
 }
 
 // Google Maps Directions API (returns polylines + duration/distance)
-async function fetchDirections(origin, destination, mode = 'transit') {
+async function fetchDirections(origin, destination) {
   if (!GOOGLE_MAPS_API_KEY) return { duration: 'unknown', distance: 'unknown', polyline: null };
-  try {
+
+  async function tryMode(mode) {
     const params = new URLSearchParams({
-      origin,
-      destination,
-      mode,
+      origin, destination, mode,
       key: GOOGLE_MAPS_API_KEY,
       region: 'jp',
     });
     const res = await fetch(`https://maps.googleapis.com/maps/api/directions/json?${params}`);
-    if (!res.ok) return { duration: 'unknown', distance: 'unknown', polyline: null };
+    if (!res.ok) return null;
     const data = await res.json();
+    if (data.status !== 'OK') return null;
     const route = data.routes?.[0];
     const leg = route?.legs?.[0];
+    if (!leg) return null;
     return {
-      duration: leg?.duration?.text || 'unknown',
-      duration_value: leg?.duration?.value || 0,
-      distance: leg?.distance?.text || 'unknown',
-      polyline: route?.overview_polyline?.points || null,
+      duration: leg.duration?.text || 'unknown',
+      duration_value: leg.duration?.value || 0,
+      distance: leg.distance?.text || 'unknown',
+      polyline: route.overview_polyline?.points || null,
+      mode,
       status: data.status,
     };
-  } catch { return { duration: 'unknown', distance: 'unknown', polyline: null }; }
+  }
+
+  try {
+    // Try walking first — only use it if under 30 mins
+    const walking = await tryMode('walking');
+    if (walking && walking.duration_value <= 1800) return walking;
+
+    // Use driving for route polyline (transit Directions API not available on this key)
+    // Driving gives real road routes which closely follow transit paths in cities
+    const driving = await tryMode('driving');
+    if (driving) return driving;
+
+    // Fall back to walking if driving also fails
+    if (walking) return walking;
+  } catch {}
+  return { duration: 'unknown', distance: 'unknown', polyline: null };
 }
 
 async function getDirections(origins, destinations, mode = 'transit') {
@@ -1071,6 +1088,171 @@ app.delete('/api/itineraries/:id', (req, res) => {
   res.json({ deleted: true });
 });
 
+// --- LLM transit route helper ---
+// Ask the LLM for the best transit route between two points, then geocode the stations
+async function getTransitRoute(from, to) {
+  const prompt = `What is the best transit route from "${from.name}" (${from.lat},${from.lng}) to "${to.name}" (${to.lat},${to.lng}) in Tokyo/Japan?
+
+Return ONLY a JSON object (no markdown, no commentary):
+{
+  "summary": "Take Marunouchi Line from Tokyo Station to Shinjuku Station",
+  "duration_mins": 25,
+  "stations": [
+    {"name": "Tokyo Station", "line": "Marunouchi Line"},
+    {"name": "Shinjuku Station", "line": "Marunouchi Line"}
+  ]
+}
+
+Rules:
+- Include the starting station (nearest to origin) and ending station (nearest to destination)
+- Include any transfer stations
+- duration_mins is the estimated total time including walking to/from stations
+- Keep it to the most practical single route, not alternatives`;
+
+  try {
+    const raw = await callLLM([
+      { role: 'system', content: 'You are a Tokyo transit expert. Return only valid JSON.' },
+      { role: 'user', content: prompt },
+    ], 500);
+
+    let transitData;
+    try {
+      let jsonStr = raw;
+      const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) jsonStr = fenceMatch[1].trim();
+      const objMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (objMatch) jsonStr = objMatch[0];
+      transitData = JSON.parse(jsonStr);
+    } catch {
+      // LLM returned bad JSON, fall back to driving directions
+      return fetchDirections(`${from.lat},${from.lng}`, `${to.lat},${to.lng}`);
+    }
+
+    // Geocode each station to get coordinates
+    const stationPoints = [];
+    // Start with origin point
+    stationPoints.push({ lat: from.lat, lng: from.lng });
+
+    for (const station of (transitData.stations || [])) {
+      const loc = await geocode(`${station.name} station Tokyo Japan`);
+      if (loc) {
+        stationPoints.push({ lat: loc.lat, lng: loc.lng, name: station.name, line: station.line });
+      }
+    }
+
+    // End with destination point
+    stationPoints.push({ lat: to.lat, lng: to.lng });
+
+    // Build a simple encoded polyline from the station coords
+    const polyline = encodePolyline(stationPoints);
+
+    return {
+      duration: transitData.duration_mins ? `${transitData.duration_mins} mins` : 'unknown',
+      duration_value: (transitData.duration_mins || 0) * 60,
+      distance: null,
+      polyline,
+      mode: 'transit',
+      summary: transitData.summary || '',
+      stations: stationPoints,
+      status: 'OK',
+    };
+  } catch {
+    // Fall back to driving directions
+    return fetchDirections(`${from.lat},${from.lng}`, `${to.lat},${to.lng}`);
+  }
+}
+
+// Encode an array of {lat, lng} into a Google-compatible encoded polyline
+function encodePolyline(points) {
+  let encoded = '';
+  let prevLat = 0, prevLng = 0;
+  for (const p of points) {
+    const lat = Math.round(p.lat * 1e5);
+    const lng = Math.round(p.lng * 1e5);
+    encoded += encodeValue(lat - prevLat);
+    encoded += encodeValue(lng - prevLng);
+    prevLat = lat;
+    prevLng = lng;
+  }
+  return encoded;
+}
+
+function encodeValue(value) {
+  let v = value < 0 ? ~(value << 1) : (value << 1);
+  let encoded = '';
+  while (v >= 0x20) {
+    encoded += String.fromCharCode((0x20 | (v & 0x1f)) + 63);
+    v >>= 5;
+  }
+  encoded += String.fromCharCode(v + 63);
+  return encoded;
+}
+
+// --- LLM card ID remapping helper ---
+// The LLM sometimes invents sequential IDs (1,2,3...) instead of using the real DB IDs.
+// This function remaps them back to the real IDs by matching order of appearance.
+function remapCardIds(llmIds, realIds) {
+  const realSet = new Set(realIds);
+  const allValid = llmIds.every(id => realSet.has(id));
+  if (allValid) return llmIds; // LLM used correct IDs
+
+  // Build a mapping: LLM assigned them in the order they appeared in the prompt
+  // The prompt lists cards in the same order as realIds, so map by position
+  const llmUnique = [...new Set(llmIds)];
+  const mapping = {};
+  for (let i = 0; i < llmUnique.length && i < realIds.length; i++) {
+    mapping[llmUnique[i]] = realIds[i];
+  }
+  return llmIds.map(id => mapping[id] ?? id);
+}
+
+function remapProposal(proposal, realIds) {
+  if (!proposal?.days) return proposal;
+  const allLlmIds = proposal.days.flatMap(d => d.card_ids || []);
+  const realSet = new Set(realIds);
+  if (allLlmIds.every(id => realSet.has(id))) return proposal; // Already correct
+
+  // Remap: collect all LLM IDs in order, map to real IDs in order
+  const llmOrdered = [];
+  const seen = new Set();
+  for (const id of allLlmIds) {
+    if (!seen.has(id)) { llmOrdered.push(id); seen.add(id); }
+  }
+  const mapping = {};
+  for (let i = 0; i < llmOrdered.length && i < realIds.length; i++) {
+    mapping[llmOrdered[i]] = realIds[i];
+  }
+
+  for (const day of proposal.days) {
+    day.card_ids = (day.card_ids || []).map(id => mapping[id] ?? id);
+  }
+  return proposal;
+}
+
+function remapFinalData(finalData, realIds) {
+  if (!finalData?.days) return finalData;
+  const allLlmIds = finalData.days.flatMap(d => (d.stops || []).map(s => s.card_id));
+  const realSet = new Set(realIds);
+  if (allLlmIds.every(id => realSet.has(id))) return finalData; // Already correct
+
+  const llmOrdered = [];
+  const seen = new Set();
+  for (const id of allLlmIds) {
+    if (!seen.has(id)) { llmOrdered.push(id); seen.add(id); }
+  }
+  const mapping = {};
+  for (let i = 0; i < llmOrdered.length && i < realIds.length; i++) {
+    mapping[llmOrdered[i]] = realIds[i];
+  }
+
+  for (const day of finalData.days) {
+    for (const stop of (day.stops || [])) {
+      stop.card_id = mapping[stop.card_id] ?? stop.card_id;
+    }
+  }
+  return finalData;
+}
+
 // --- Itinerary Propose (Phase 1 LLM) ---
 
 app.post('/api/itineraries/:id/propose', async (req, res) => {
@@ -1095,7 +1277,7 @@ app.post('/api/itineraries/:id/propose', async (req, res) => {
   const flights = db.prepare('SELECT * FROM flights ORDER BY departure_time').all();
 
   const cardList = cards.map(c => {
-    let entry = `- ${c.title} [${c.category}]`;
+    let entry = `- ID=${c.id}: ${c.title} [${c.category}]`;
     if (c.address) entry += ` @ ${c.address}`;
     if (c.lat && c.lng) entry += ` (${c.lat}, ${c.lng})`;
     if (c.description) entry += ` — ${c.description}`;
@@ -1117,13 +1299,15 @@ app.post('/api/itineraries/:id/propose', async (req, res) => {
 
   const systemPrompt = `You are a Japan travel logistics expert. Given a list of approved places with their locations, propose a sensible day-by-day grouping.
 
+CRITICAL: Each place has an ID number (shown as "ID=55" etc). You MUST use these EXACT ID numbers in card_ids. Do NOT invent new IDs or renumber them.
+
 Return ONLY a valid JSON object (no markdown fences, no commentary) with this exact structure:
 {
   "days": [
     {
       "day": 1,
       "title": "Short theme title for the day",
-      "card_ids": [3, 7, 12],
+      "card_ids": [55, 62, 70],
       "rationale": "Brief explanation of why these are grouped",
       "estimated_walking_km": 3.2,
       "estimated_transit_mins": 25
@@ -1149,9 +1333,11 @@ Return ONLY a valid JSON object (no markdown fences, no commentary) with this ex
 }
 
 Rules:
-- Every card_id from the input must appear in exactly one day
+- card_ids MUST be the exact ID numbers from the input (e.g. ID=55 means use 55)
+- Every ID from the input must appear in exactly one day
 - Group geographically close places on the same day
 - Consider opening hours and logical visit order
+- If there is exactly one hotel in the list, assume it is the base for the entire trip — do NOT assign it to a single day. Instead, omit it from day groupings and note it as the accommodation. All days start and end at this hotel.
 - Account for jet lag on day 1 if flight info is provided — keep it light
 - The last day before a return flight should allow time to get to the airport`;
 
@@ -1196,6 +1382,9 @@ Propose a day-by-day grouping. Each day should have 2-5 stops. Return the JSON.`
       res.write('data: [DONE]\n\n');
       return res.end();
     }
+
+    // Remap card IDs if LLM invented sequential ones instead of real DB IDs
+    remapProposal(proposal, cardIds);
 
     // Save proposal to itinerary
     db.prepare(`UPDATE itineraries SET proposal_json = ?, phase = 'proposal', updated_at = datetime('now') WHERE id = ?`)
@@ -1260,8 +1449,8 @@ app.post('/api/itineraries/:id/finalize', async (req, res) => {
   const daysDescription = proposal.days.map(day => {
     const stopDetails = (day.card_ids || []).map(cid => {
       const c = cardMap[cid];
-      if (!c) return `- [Unknown card ${cid}]`;
-      let entry = `- ${c.title} [${c.category}] @ ${c.address || 'no address'}`;
+      if (!c) return `- ID=${cid}: [Unknown card]`;
+      let entry = `- ID=${c.id}: ${c.title} [${c.category}] @ ${c.address || 'no address'}`;
       if (c.timing) entry += ` | ${c.timing}`;
       return entry;
     }).join('\n');
@@ -1269,6 +1458,8 @@ app.post('/api/itineraries/:id/finalize', async (req, res) => {
   }).join('\n\n');
 
   const systemPrompt = `You are a Japan travel expert creating a finalized day-by-day itinerary.
+
+CRITICAL: Each place has an ID number (shown as "ID=55" etc). You MUST use these EXACT ID numbers in card_id fields. Do NOT invent new IDs or renumber them.
 
 Return ONLY a valid JSON object (no markdown, no commentary) with this structure:
 {
@@ -1279,7 +1470,7 @@ Return ONLY a valid JSON object (no markdown, no commentary) with this structure
       "date": "2025-04-01",
       "stops": [
         {
-          "card_id": 3,
+          "card_id": 55,
           "order": 0,
           "suggested_time": "09:00",
           "duration_mins": 90,
@@ -1291,10 +1482,12 @@ Return ONLY a valid JSON object (no markdown, no commentary) with this structure
 }
 
 Rules:
+- card_id MUST be the exact ID numbers from the input (e.g. ID=55 means use 55)
 - Maintain the same day groupings from the proposal
 - Order stops within each day for optimal flow based on the "${optimization || 'balanced'}" optimization
 - Include realistic suggested_time values based on opening hours and travel time
 - Account for meals (leave gaps for lunch/dinner near restaurant stops)
+- If there is a single hotel, it is the base for the entire trip — all days start and end there. Do not include it as a stop; assume transit times are from/to this hotel.
 - Day 1 should account for jet lag/arrival time if flight info is provided
 - Last day should leave time for airport transfer if return flight info is provided`;
 
@@ -1332,6 +1525,9 @@ Finalize the schedule with ordered stops and timing. Return the JSON.`;
       return res.end();
     }
 
+    // Remap card IDs if LLM invented sequential ones instead of real DB IDs
+    remapFinalData(finalData, cardIds);
+
     // Save final data
     db.prepare(`UPDATE itineraries SET final_json = ?, optimization = ?, phase = 'final', updated_at = datetime('now') WHERE id = ?`)
       .run(JSON.stringify(finalData), optimization || 'balanced', req.params.id);
@@ -1353,37 +1549,6 @@ Finalize the schedule with ordered stops and timing. Return the JSON.`;
       );
     }
 
-    // Fetch directions for each day and store polylines
-    res.write(`data: ${JSON.stringify({ status: 'Fetching routes...' })}\n\n`);
-    const dayRows = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? ORDER BY day_number').all(req.params.id);
-    for (const dayRow of dayRows) {
-      let stops;
-      try { stops = JSON.parse(dayRow.stops_json); } catch { continue; }
-      if (stops.length < 2) continue;
-
-      const waypoints = stops.map(s => {
-        const card = cardMap[s.card_id];
-        return card ? { lat: card.lat, lng: card.lng } : null;
-      }).filter(Boolean);
-
-      if (waypoints.length < 2) continue;
-
-      const legs = [];
-      for (let i = 0; i < waypoints.length - 1; i++) {
-        try {
-          const origin = `${waypoints[i].lat},${waypoints[i].lng}`;
-          const dest = `${waypoints[i + 1].lat},${waypoints[i + 1].lng}`;
-          const dirResult = await fetchDirections(origin, dest);
-          legs.push(dirResult);
-        } catch {
-          legs.push({ duration: 'unknown', distance: 'unknown', polyline: null });
-        }
-      }
-
-      db.prepare('UPDATE itinerary_days SET legs_json = ? WHERE id = ?')
-        .run(JSON.stringify(legs), dayRow.id);
-    }
-
     res.write(`data: ${JSON.stringify({ finalData, status: 'done' })}\n\n`);
     res.write('data: [DONE]\n\n');
     res.end();
@@ -1394,7 +1559,73 @@ Finalize the schedule with ordered stops and timing. Return the JSON.`;
   }
 });
 
-// --- Per-Day Enrichment (SSE) ---
+// --- Per-Day Load: routes only (SSE for progress, returns legs at end) ---
+
+app.post('/api/itineraries/:id/days/:dayNum/load', async (req, res) => {
+  const { id, dayNum } = req.params;
+  const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(id);
+  if (!itinerary) return res.status(404).json({ error: 'itinerary not found' });
+
+  const dayRow = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? AND day_number = ?').get(id, dayNum);
+  if (!dayRow) return res.status(404).json({ error: 'day not found' });
+
+  // If already loaded, return cached legs
+  if (dayRow.legs_json && dayRow.legs_json !== '[]') {
+    let legs; try { legs = JSON.parse(dayRow.legs_json); } catch { legs = []; }
+    if (legs.length) return res.json({ legs });
+  }
+
+  let stops;
+  try { stops = JSON.parse(dayRow.stops_json); } catch { stops = []; }
+
+  // Load all cards for this itinerary
+  let allCardIds;
+  try { allCardIds = JSON.parse(itinerary.card_ids); } catch { allCardIds = []; }
+  const allPlaceholders = allCardIds.map(() => '?').join(',');
+  const allCards = allCardIds.length ? db.prepare(`SELECT * FROM cards WHERE id IN (${allPlaceholders})`).all(...allCardIds) : [];
+  const cardMap = {};
+  for (const c of allCards) cardMap[c.id] = c;
+
+  const hotelCard = allCards.find(c => c.category === 'hotel' && c.lat && c.lng);
+
+  // Build waypoints: hotel → stop1 → stop2 → ... → hotel
+  const namedWaypoints = [];
+  if (hotelCard) namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: hotelCard.title });
+  for (const s of stops) {
+    const card = cardMap[s.card_id];
+    if (card?.lat && card?.lng) namedWaypoints.push({ lat: card.lat, lng: card.lng, name: card.title });
+  }
+  if (hotelCard) namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: hotelCard.title });
+
+  const legs = [];
+  if (namedWaypoints.length >= 2) {
+    for (let i = 0; i < namedWaypoints.length - 1; i++) {
+      const from = namedWaypoints[i];
+      const to = namedWaypoints[i + 1];
+      try {
+        // Try walking first — use if under 30 mins
+        const walkResult = await fetchDirections(`${from.lat},${from.lng}`, `${to.lat},${to.lng}`);
+        if (walkResult.mode === 'walking' && walkResult.duration_value <= 1800) {
+          legs.push(walkResult);
+        } else {
+          // For longer distances, ask LLM for transit route with station waypoints
+          const transitLeg = await getTransitRoute(from, to);
+          legs.push(transitLeg);
+        }
+      } catch {
+        legs.push({ duration: 'unknown', distance: 'unknown', polyline: null });
+      }
+    }
+  }
+
+  // Save legs
+  db.prepare('UPDATE itinerary_days SET legs_json = ? WHERE id = ?')
+    .run(JSON.stringify(legs), dayRow.id);
+
+  res.json({ legs });
+});
+
+// --- Per-Day Enrichment (SSE) - legacy, kept for backward compat ---
 
 app.post('/api/itineraries/:id/days/:dayNum/enrich', async (req, res) => {
   const { id, dayNum } = req.params;
@@ -1428,14 +1659,28 @@ app.post('/api/itineraries/:id/days/:dayNum/enrich', async (req, res) => {
   const isFirstDay = parseInt(dayNum) === allDays[0]?.day_number;
   const isLastDay = parseInt(dayNum) === allDays[allDays.length - 1]?.day_number;
 
-  let flightContext = '';
+  let extraContext = '';
+
+  // Hotel context — find the single hotel card if it exists
+  let allCardIds;
+  try { allCardIds = JSON.parse(itinerary.card_ids); } catch { allCardIds = []; }
+  if (allCardIds.length) {
+    const allPlaceholders = allCardIds.map(() => '?').join(',');
+    const allCards = db.prepare(`SELECT * FROM cards WHERE id IN (${allPlaceholders})`).all(...allCardIds);
+    const hotels = allCards.filter(c => c.category === 'hotel');
+    if (hotels.length === 1) {
+      const h = hotels[0];
+      extraContext += `\n\nHOTEL: The group is staying at ${h.title}${h.address ? ` (${h.address})` : ''} for the entire trip. All days start and end here. Include transit directions from/to this hotel.`;
+    }
+  }
+
   if (isFirstDay) {
     const outbound = flights.find(f => f.direction === 'outbound');
-    if (outbound) flightContext = `\n\nFLIGHT CONTEXT: You arrive on ${outbound.airline || ''} ${outbound.flight_number || ''} at ${outbound.arrival_airport || ''} at ${outbound.arrival_time || ''}. Account for jet lag, immigration, and transit to the city.`;
+    if (outbound) extraContext += `\n\nFLIGHT CONTEXT: You arrive on ${outbound.airline || ''} ${outbound.flight_number || ''} at ${outbound.arrival_airport || ''} at ${outbound.arrival_time || ''}. Account for jet lag, immigration, and transit to the city.`;
   }
   if (isLastDay) {
     const returnFlight = flights.find(f => f.direction === 'return');
-    if (returnFlight) flightContext += `\n\nFLIGHT CONTEXT: Return flight ${returnFlight.airline || ''} ${returnFlight.flight_number || ''} departs ${returnFlight.departure_airport || ''} at ${returnFlight.departure_time || ''}. Plan time to get to the airport and check in.`;
+    if (returnFlight) extraContext += `\n\nFLIGHT CONTEXT: Return flight ${returnFlight.airline || ''} ${returnFlight.flight_number || ''} departs ${returnFlight.departure_airport || ''} at ${returnFlight.departure_time || ''}. Plan time to get to the airport and check in.`;
   }
 
   const stopList = stops.map((s, i) => {
@@ -1456,7 +1701,7 @@ app.post('/api/itineraries/:id/days/:dayNum/enrich', async (req, res) => {
 
 STOPS FOR THIS DAY:
 ${stopList}
-${flightContext}
+${extraContext}
 
 For each stop, include:
 - A vivid 2-3 sentence description of what to expect

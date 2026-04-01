@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   createItinerary, fetchItineraries, fetchItinerary, deleteItinerary,
-  proposeItinerary, finalizeItinerary,
+  proposeItinerary, finalizeItinerary, loadDayRoutes,
   fetchFlights, createFlight, updateFlight, deleteFlight,
 } from '../lib/api.js';
 import ProposalReview from './ProposalReview.jsx';
@@ -82,7 +82,9 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
       const result = await proposeItinerary(created.id, (s) => setStatus(s));
 
       if (result?.proposal) {
-        setItinerary({ ...created, proposal: result.proposal, phase: 'proposal' });
+        // Reload full itinerary to get cards included
+        const data = await fetchItinerary(created.id);
+        setItinerary(data);
         setPhase('reviewing');
       } else {
         setError('No proposal received');
@@ -97,24 +99,50 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
     }
   }, [approvedCards]);
 
-  // --- Finalize with optimization ---
+  // Per-day route data loaded sequentially: { [dayNumber]: { legs } }
+  const [dayData, setDayData] = useState({});
+  const [loadingDay, setLoadingDay] = useState(null);
+
+  // --- Finalize with optimization, then load routes day by day ---
   const handleFinalize = useCallback(async (optimization) => {
     if (!activeId) return;
     setError(null);
     setStatus('Building your schedule...');
     setPhase('finalizing');
+    setDayData({});
 
     try {
-      const result = await finalizeItinerary(activeId, optimization, (s) => setStatus(s));
+      await finalizeItinerary(activeId, optimization, (s) => setStatus(s));
 
-      // Reload full itinerary with days
+      // Reload itinerary to get the day structure
       const data = await fetchItinerary(activeId);
       setItinerary(data);
-      setPhase('complete');
+      setPhase('loading');
+      setStatus('');
       await loadVersions();
+
+      // Load routes for each day sequentially
+      for (const day of (data.days || [])) {
+        setLoadingDay(day.day_number);
+        try {
+          const result = await loadDayRoutes(activeId, day.day_number);
+          setDayData(prev => ({
+            ...prev,
+            [day.day_number]: { legs: result.legs || [] },
+          }));
+        } catch {
+          setDayData(prev => ({
+            ...prev,
+            [day.day_number]: { legs: [] },
+          }));
+        }
+      }
+
+      setLoadingDay(null);
+      setPhase('complete');
     } catch (err) {
       setError(err.message);
-      setPhase('reviewing'); // Go back to review
+      setPhase('reviewing');
     } finally {
       setStatus('');
     }
@@ -242,10 +270,10 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
 
         <button
           className="build-btn"
-          disabled={!approvedCards.length || phase === 'proposing' || phase === 'finalizing'}
+          disabled={!approvedCards.length || phase === 'proposing' || phase === 'finalizing' || phase === 'loading'}
           onClick={handleBuild}
         >
-          {phase === 'proposing' || phase === 'finalizing' ? 'Building...' : 'Build Itinerary'}
+          {phase === 'proposing' || phase === 'finalizing' || phase === 'loading' ? 'Building...' : 'Build Itinerary'}
         </button>
       </aside>
 
@@ -270,13 +298,13 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
         {phase === 'reviewing' && itinerary?.proposal && (
           <ProposalReview
             proposal={itinerary.proposal}
-            cards={approvedCards}
+            cards={itinerary.cards || approvedCards}
             onFinalize={handleFinalize}
           />
         )}
 
-        {/* Phase 2 complete: Day-by-day view */}
-        {phase === 'complete' && itinerary?.days?.length > 0 && (
+        {/* Day-by-day view: loading sequentially or complete */}
+        {(phase === 'loading' || phase === 'complete') && itinerary?.days?.length > 0 && (
           <div className="day-plans">
             {/* Outbound flight */}
             {outboundFlight && (
@@ -287,18 +315,33 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
               />
             )}
 
-            {/* Day cards */}
-            {itinerary.days.map(day => (
-              <DayCard
-                key={day.id}
-                day={day}
-                cards={approvedCards}
-                itineraryId={activeId}
-              />
-            ))}
+            {/* Day cards — show each day as it loads */}
+            {itinerary.days.map(day => {
+              const live = dayData[day.day_number];
+              // Don't render days that haven't started loading yet
+              if (phase === 'loading' && !live) return null;
+
+              return (
+                <DayCard
+                  key={day.id}
+                  day={day}
+                  cards={itinerary.cards || approvedCards}
+                  itineraryId={activeId}
+                  liveData={live || null}
+                />
+              );
+            })}
+
+            {/* Loading indicator for next day */}
+            {phase === 'loading' && loadingDay && (
+              <div className="itinerary-status">
+                <div className="status-spinner" />
+                <span>Loading Day {loadingDay}...</span>
+              </div>
+            )}
 
             {/* Return flight */}
-            {returnFlight && (
+            {returnFlight && phase === 'complete' && (
               <FlightCard
                 flight={returnFlight}
                 onEdit={(f) => setFlightModal({ flight: f })}
