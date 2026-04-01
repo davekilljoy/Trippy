@@ -1,0 +1,270 @@
+.idea-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+  transition: border-color 0.2s;
+}
+
+.idea-card:hover {
+  border-color: var(--muted);
+}
+
+.idea-card.approved-both {
+  border-color: var(--gold);
+  border-width: 2px;
+  box-shadow: 0 0 0 1px var(--gold-light);
+}
+
+/* Ribbon */
+.ribbon {
+  position: absolute;
+  top: 12px;
+  right: -30px;
+  z-index: 2;
+  background: var(--gold);
+  color: var(--paper);
+  font-family: var(--font-body);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.2rem 2.2rem;
+  transform: rotate(35deg);
+  pointer-events: none;
+}
+
+/* Image area */
+.card-image {
+  position: relative;
+  width: 100%;
+  min-height: 120px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.card-image img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  display: block;
+}
+
+.card-image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  font-size: 2.2rem;
+  background: linear-gradient(135deg, var(--border) 0%, #e2dbd0 100%);
+}
+
+.card-category-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  font-family: var(--font-body);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.18rem 0.5rem;
+  border-radius: 3px;
+}
+
+/* Body */
+.card-body {
+  padding: 0.9rem 1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.card-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  flex: 1;
+}
+
+.card-title a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+  transition: border-color 0.15s;
+}
+
+.card-title a:hover {
+  border-color: var(--red);
+  color: var(--red);
+  text-decoration: none;
+}
+
+/* Menu */
+.card-menu-wrap {
+  position: relative;
+}
+
+.card-menu-btn {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  color: var(--muted);
+  padding: 0.1rem 0.3rem;
+  line-height: 1;
+  letter-spacing: 0.1em;
+}
+
+.card-menu-btn:hover {
+  color: var(--ink);
+}
+
+.card-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  z-index: 10;
+  min-width: 100px;
+  overflow: hidden;
+}
+
+.card-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.8rem;
+  border: none;
+  background: none;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+
+.card-menu button:hover {
+  background: var(--border);
+}
+
+.card-menu button.danger {
+  color: var(--red);
+}
+
+/* Address, description & timing */
+.card-address {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+  line-height: 1.4;
+}
+
+.card-desc {
+  font-size: 0.82rem;
+  color: var(--ink);
+  line-height: 1.55;
+  margin-bottom: 0.4rem;
+}
+
+.card-timing {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+/* Notes */
+.card-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.7rem;
+}
+
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.6rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.avatar.jen {
+  background: var(--red);
+}
+
+.note-text {
+  font-size: 0.76rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* Approval row */
+.card-approval {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+
+.approve-toggle {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--muted);
+  transition: all 0.15s;
+}
+
+.approve-toggle:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.approve-toggle.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.approval-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-align: center;
+  flex: 1;
+}
