@@ -83,16 +83,40 @@ export default function ProposalReview({ proposal, cards, onFinalize }) {
                   <div className="proposal-day-header">
                     <span className="proposal-day-num">Day {day.day}</span>
                     <span className="proposal-day-title">{day.title}</span>
+                    {day.pacing && (
+                      <span className={`proposal-pacing proposal-pacing--${day.pacing}`}>{day.pacing}</span>
+                    )}
                   </div>
+                  {day.summary && (
+                    <p className="proposal-day-summary">{day.summary}</p>
+                  )}
                   <div className="proposal-day-stops">
-                    {(day.card_ids || []).map((cid, i) => {
-                      const card = cardMap[cid];
-                      if (!card) return null;
+                    {(day.stops || day.card_ids?.map(cid => ({ card_id: cid })) || []).map((stop, i) => {
+                      if (stop.card_id) {
+                        const card = cardMap[stop.card_id];
+                        if (!card) return null;
+                        return (
+                          <div key={stop.card_id} className="proposal-stop">
+                            {stop.suggested_time
+                              ? <span className="proposal-stop-time">{stop.suggested_time}</span>
+                              : <span className="proposal-stop-num">{i + 1}</span>
+                            }
+                            <span className="proposal-stop-cat">{stop.slot_type || card.category}</span>
+                            <span className="proposal-stop-title">{card.title}</span>
+                            {stop.duration_mins && <span className="proposal-stop-dur">{stop.duration_mins}m</span>}
+                          </div>
+                        );
+                      }
+                      // Meal suggestion (no card)
                       return (
-                        <div key={cid} className="proposal-stop">
-                          <span className="proposal-stop-num">{i + 1}</span>
-                          <span className="proposal-stop-cat">{card.category}</span>
-                          <span className="proposal-stop-title">{card.title}</span>
+                        <div key={`suggestion-${i}`} className="proposal-stop proposal-stop--meal">
+                          {stop.suggested_time
+                            ? <span className="proposal-stop-time">{stop.suggested_time}</span>
+                            : <span className="proposal-stop-num">{i + 1}</span>
+                          }
+                          <span className="proposal-stop-cat proposal-stop-cat--meal">{stop.slot_type || 'meal'}</span>
+                          <span className="proposal-stop-title">{stop.suggestion || 'Meal break'}</span>
+                          {stop.duration_mins && <span className="proposal-stop-dur">{stop.duration_mins}m</span>}
                         </div>
                       );
                     })}

@@ -95,6 +95,43 @@
   font-size: 1.05rem;
 }
 
+.proposal-day-summary {
+  font-size: 0.74rem;
+  color: var(--muted);
+  font-style: italic;
+  margin: 0 0 0.5rem 0;
+}
+
+.proposal-pacing {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 100px;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.proposal-pacing--light {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.proposal-pacing--moderate {
+  background: #fff8e1;
+  color: #f57f17;
+}
+
+.proposal-pacing--full {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.proposal-pacing--intense {
+  background: #fce4ec;
+  color: #c62828;
+}
+
 .proposal-day-stops {
   display: flex;
   flex-direction: column;
@@ -137,6 +174,35 @@
 
 .proposal-stop-title {
   font-weight: 500;
+}
+
+.proposal-stop-time {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--gold);
+  min-width: 38px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.proposal-stop-dur {
+  font-size: 0.6rem;
+  color: var(--muted);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.proposal-stop--meal {
+  background: color-mix(in srgb, var(--gold) 6%, transparent);
+  border-radius: 3px;
+  padding: 0.15rem 0.3rem;
+  margin: 0 -0.3rem;
+}
+
+.proposal-stop-cat--meal {
+  background: color-mix(in srgb, var(--gold) 15%, var(--paper));
+  border-color: var(--gold);
+  color: var(--gold);
 }
 
 .proposal-day-meta {

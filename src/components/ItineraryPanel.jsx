@@ -199,7 +199,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
             <h3 className="sidebar-heading">Versions</h3>
             <div className="version-list">
               {versions.map(v => (
-                <button
+                <div
                   key={v.id}
                   className={`version-item ${v.id === activeId ? 'active' : ''}`}
                   onClick={() => handleSelectVersion(v.id)}
@@ -210,7 +210,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
                     className="version-delete"
                     onClick={e => { e.stopPropagation(); handleDeleteVersion(v.id); }}
                   >×</button>
-                </button>
+                </div>
               ))}
             </div>
           </div>

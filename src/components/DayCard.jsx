@@ -17,16 +17,26 @@ export default function DayCard({ day, cards, itineraryId, liveData }) {
   const hotel = (day.hotel_id ? cardMap[day.hotel_id] : cards.find(c => c.category === 'hotel' && c.lat && c.lng)) || null;
 
   const stops = (day.stops || []).map(s => {
-    const card = cardMap[s.card_id];
-    if (card) return { ...card, ...s };
-    return { id: s.card_id, title: `Stop ${s.order + 1}`, category: '?', ...s };
+    if (s.card_id) {
+      const card = cardMap[s.card_id];
+      if (card) return { ...card, ...s };
+      return { id: s.card_id, title: `Stop ${s.order + 1}`, category: '?', ...s };
+    }
+    // Meal suggestion or LLM-suggested stop (no card_id)
+    return {
+      id: `suggestion-${s.order}`,
+      title: s.suggestion || `${s.slot_type || 'Break'}`,
+      category: s.slot_type || 'meal',
+      isSuggestion: true,
+      ...s,
+    };
   });
 
   // Use live route data if available, otherwise stored
   const legs = liveData?.legs?.length ? liveData.legs : (day.legs || []);
   const waypoints = liveData?.waypoints?.length ? liveData.waypoints : (day.waypoints || []);
 
-  // On-demand enrichment
+  // On-demand enrichment (user-triggered)
   const handleEnrich = useCallback(async () => {
     if (streaming) return;
     setStreaming(true);
@@ -56,21 +66,34 @@ export default function DayCard({ day, cards, itineraryId, liveData }) {
           <span className="day-card-num">Day {day.day_number}</span>
           <h2 className="day-card-title">{day.title}</h2>
           {day.date && <span className="day-card-date">{day.date}</span>}
+          {day.pacing && (
+            <span className={`day-card-pacing day-card-pacing--${day.pacing}`}>{day.pacing}</span>
+          )}
           {hotel && <span className="day-card-hotel">{hotel.title}</span>}
         </div>
+        {day.summary && (
+          <p className="day-card-summary">{day.summary}</p>
+        )}
       </div>
 
       <div className="day-card-stops">
         {stops.map((stop, i) => (
-          <div key={stop.id || i} className="day-card-stop">
-            <span className="day-card-stop-num">{i + 1}</span>
+          <div key={stop.id || i} className={`day-card-stop${stop.isSuggestion ? ' day-card-stop--meal' : ''}${stop.slot_type === 'lunch' || stop.slot_type === 'dinner' || stop.slot_type === 'breakfast' || stop.slot_type === 'snack' ? ' day-card-stop--meal' : ''}`}>
+            <div className="day-card-stop-marker">
+              {stop.suggested_time
+                ? <span className="day-card-stop-time">{stop.suggested_time}</span>
+                : <span className="day-card-stop-num">{i + 1}</span>
+              }
+              {stop.duration_mins && (
+                <span className="day-card-stop-duration">{stop.duration_mins}m</span>
+              )}
+            </div>
             <div className="day-card-stop-info">
               <div className="day-card-stop-top">
-                <span className="day-card-stop-cat">{stop.category}</span>
+                <span className={`day-card-stop-cat${stop.isSuggestion ? ' day-card-stop-cat--suggestion' : ''}`}>
+                  {stop.slot_type || stop.category}
+                </span>
                 <strong>{stop.title}</strong>
-                {stop.suggested_time && (
-                  <span className="day-card-stop-time">{stop.suggested_time}</span>
-                )}
               </div>
               {stop.address && <small className="day-card-stop-addr">{stop.address}</small>}
               {stop.note && <span className="day-card-stop-note">{stop.note}</span>}
