@@ -13,8 +13,8 @@ export default function DayCard({ day, cards, itineraryId, liveData }) {
   const cardMap = {};
   for (const c of cards) cardMap[c.id] = c;
 
-  // Find hotel (single hotel = base for whole trip)
-  const hotel = cards.find(c => c.category === 'hotel' && c.lat && c.lng) || null;
+  // Find this day's hotel (multi-hotel: use hotel_id, fallback to single hotel)
+  const hotel = (day.hotel_id ? cardMap[day.hotel_id] : cards.find(c => c.category === 'hotel' && c.lat && c.lng)) || null;
 
   const stops = (day.stops || []).map(s => {
     const card = cardMap[s.card_id];
@@ -55,6 +55,7 @@ export default function DayCard({ day, cards, itineraryId, liveData }) {
           <span className="day-card-num">Day {day.day_number}</span>
           <h2 className="day-card-title">{day.title}</h2>
           {day.date && <span className="day-card-date">{day.date}</span>}
+          {hotel && <span className="day-card-hotel">{hotel.title}</span>}
         </div>
       </div>
 

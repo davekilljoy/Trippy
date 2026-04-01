@@ -64,6 +64,7 @@ db.exec(`
     day_number INTEGER NOT NULL,
     date TEXT,
     title TEXT,
+    hotel_id INTEGER,
     stops_json TEXT NOT NULL DEFAULT '[]',
     legs_json TEXT,
     enrichment_md TEXT,
@@ -91,6 +92,7 @@ db.exec(`
 try { db.exec('ALTER TABLE cards ADD COLUMN address TEXT'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN lat REAL'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN lng REAL'); } catch {}
+try { db.exec('ALTER TABLE itinerary_days ADD COLUMN hotel_id INTEGER'); } catch {}
 
 
 const app = express();
@@ -1091,19 +1093,22 @@ app.delete('/api/itineraries/:id', (req, res) => {
 // --- LLM transit route helper ---
 // Ask the LLM for the best transit route between two points, then geocode the stations
 async function getTransitRoute(from, to) {
-  const prompt = `What is the best transit route from "${from.name}" (${from.lat},${from.lng}) to "${to.name}" (${to.lat},${to.lng}) in Tokyo/Japan?
+  const prompt = `What is the best public transit route from "${from.name}" at coordinates (${from.lat}, ${from.lng}) to "${to.name}" at coordinates (${to.lat}, ${to.lng}) in Japan?
+
+Use the coordinates to determine the actual city/region — do NOT assume Tokyo. These could be anywhere in Japan (Osaka, Kyoto, Nara, etc.).
 
 Return ONLY a JSON object (no markdown, no commentary):
 {
-  "summary": "Take Marunouchi Line from Tokyo Station to Shinjuku Station",
+  "summary": "Take JR Loop Line from Namba to Universal City Station",
   "duration_mins": 25,
   "stations": [
-    {"name": "Tokyo Station", "line": "Marunouchi Line"},
-    {"name": "Shinjuku Station", "line": "Marunouchi Line"}
+    {"name": "Namba Station", "line": "JR Loop Line"},
+    {"name": "Universal City Station", "line": "JR Loop Line"}
   ]
 }
 
 Rules:
+- Use the COORDINATES to determine which city these places are in
 - Include the starting station (nearest to origin) and ending station (nearest to destination)
 - Include any transfer stations
 - duration_mins is the estimated total time including walking to/from stations
@@ -1111,7 +1116,7 @@ Rules:
 
   try {
     const raw = await callLLM([
-      { role: 'system', content: 'You are a Tokyo transit expert. Return only valid JSON.' },
+      { role: 'system', content: 'You are a Japan public transit expert covering all cities (Tokyo, Osaka, Kyoto, etc.). Return only valid JSON.' },
       { role: 'user', content: prompt },
     ], 500);
 
@@ -1225,6 +1230,7 @@ function remapProposal(proposal, realIds) {
 
   for (const day of proposal.days) {
     day.card_ids = (day.card_ids || []).map(id => mapping[id] ?? id);
+    if (day.hotel_id) day.hotel_id = mapping[day.hotel_id] ?? day.hotel_id;
   }
   return proposal;
 }
@@ -1249,6 +1255,7 @@ function remapFinalData(finalData, realIds) {
     for (const stop of (day.stops || [])) {
       stop.card_id = mapping[stop.card_id] ?? stop.card_id;
     }
+    if (day.hotel_id) day.hotel_id = mapping[day.hotel_id] ?? day.hotel_id;
   }
   return finalData;
 }
@@ -1297,6 +1304,24 @@ app.post('/api/itineraries/:id/propose', async (req, res) => {
     ? `Trip dates: ${settings.dateFrom} to ${settings.dateTo}`
     : 'Trip dates: flexible';
 
+  // Identify hotels for multi-hotel support
+  const hotels = cards.filter(c => c.category === 'hotel');
+  let hotelContext = '';
+  if (hotels.length === 1) {
+    hotelContext = `\n\nACCOMMODATION: There is one hotel — ID=${hotels[0].id}: "${hotels[0].title}" @ ${hotels[0].address || 'unknown'}. This is the base for the entire trip. Do NOT include it as a day stop. All days start and end here.`;
+  } else if (hotels.length > 1) {
+    hotelContext = `\n\nACCOMMODATION: There are ${hotels.length} hotels. Each is the base for nearby attractions:`;
+    for (const h of hotels) {
+      hotelContext += `\n- ID=${h.id}: "${h.title}" @ ${h.address || 'unknown'} (${h.lat}, ${h.lng})`;
+    }
+    hotelContext += `\n\nRules for multi-hotel trips:`;
+    hotelContext += `\n- Assign each day a "hotel_id" — the hotel the group sleeps at that night`;
+    hotelContext += `\n- Group attractions near each hotel together on consecutive days`;
+    hotelContext += `\n- When switching cities/hotels, create a travel day that accounts for getting from one hotel to the next (e.g. shinkansen)`;
+    hotelContext += `\n- Do NOT include hotels as stops in card_ids — they are accommodation, not activities`;
+    hotelContext += `\n- Order the trip logically: finish one city before moving to the next`;
+  }
+
   const systemPrompt = `You are a Japan travel logistics expert. Given a list of approved places with their locations, propose a sensible day-by-day grouping.
 
 CRITICAL: Each place has an ID number (shown as "ID=55" etc). You MUST use these EXACT ID numbers in card_ids. Do NOT invent new IDs or renumber them.
@@ -1307,7 +1332,8 @@ Return ONLY a valid JSON object (no markdown fences, no commentary) with this ex
     {
       "day": 1,
       "title": "Short theme title for the day",
-      "card_ids": [55, 62, 70],
+      "hotel_id": 55,
+      "card_ids": [62, 70],
       "rationale": "Brief explanation of why these are grouped",
       "estimated_walking_km": 3.2,
       "estimated_transit_mins": 25
@@ -1334,16 +1360,21 @@ Return ONLY a valid JSON object (no markdown fences, no commentary) with this ex
 
 Rules:
 - card_ids MUST be the exact ID numbers from the input (e.g. ID=55 means use 55)
-- Every ID from the input must appear in exactly one day
+- hotel_id is the ID of the hotel the group stays at that night
+- Every non-hotel ID from the input must appear in exactly one day
+- Do NOT include hotel IDs in card_ids — hotels are accommodation, not stops
 - Group geographically close places on the same day
 - Consider opening hours and logical visit order
-- If there is exactly one hotel in the list, assume it is the base for the entire trip — do NOT assign it to a single day. Instead, omit it from day groupings and note it as the accommodation. All days start and end at this hotel.
-- Account for jet lag on day 1 if flight info is provided — keep it light
-- The last day before a return flight should allow time to get to the airport`;
+- JET LAG IS REAL: Day 1 (arrival day) the group has been on a plane for 10+ hours then a 1-2hr train. They are exhausted. Schedule at MOST 1 ultra-light, nearby activity (within walking distance of the hotel) like a casual dinner. Nothing ambitious.
+- Day 2: Still heavily jet-lagged (likely waking at 4-5am, crashing by 3pm). Schedule only easy, low-energy, nearby activities. No long transit. Keep it walkable from the hotel.
+- Day 3 onwards: Normal scheduling is fine, jet lag is mostly gone.
+- TRAVEL DAYS (switching cities/hotels): The group has to pack, check out, take a long train (e.g. 2-3hr shinkansen), check in at the new hotel, and unpack. This eats most of the day. Schedule at MOST 1 light activity near the NEW hotel after arrival. Do not plan a full day of activities on a travel day.
+- FINAL DAY (departure): The group needs to pack, check out, get to the airport 3hrs before departure, and the airport may be 1-2hrs from the hotel. Work backwards from the flight time — if the flight is afternoon, there may be time for 1 nearby morning activity. If the flight is morning, no activities — just airport.`;
 
   const userPrompt = `${dateInfo}
 Group: ${settings.adults || 2} adults${settings.children?.length ? `, ${settings.children.length} children (ages: ${settings.children.join(', ')})` : ''}
 ${flightContext}
+${hotelContext}
 
 APPROVED PLACES:
 ${cardList}
@@ -1393,12 +1424,12 @@ Propose a day-by-day grouping. Each day should have 2-5 stops. Return the JSON.`
     // Create itinerary_days rows
     db.prepare('DELETE FROM itinerary_days WHERE itinerary_id = ?').run(req.params.id);
     const dayStmt = db.prepare(`
-      INSERT INTO itinerary_days (itinerary_id, day_number, title, stops_json)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO itinerary_days (itinerary_id, day_number, title, hotel_id, stops_json)
+      VALUES (?, ?, ?, ?, ?)
     `);
     for (const day of proposal.days) {
       const stops = (day.card_ids || []).map((cid, order) => ({ card_id: cid, order }));
-      dayStmt.run(req.params.id, day.day, day.title || `Day ${day.day}`, JSON.stringify(stops));
+      dayStmt.run(req.params.id, day.day, day.title || `Day ${day.day}`, day.hotel_id || null, JSON.stringify(stops));
     }
 
     res.write(`data: ${JSON.stringify({ proposal, status: 'done' })}\n\n`);
@@ -1414,13 +1445,25 @@ Propose a day-by-day grouping. Each day should have 2-5 stops. Return the JSON.`
 // --- Itinerary Finalize (Phase 2 LLM) ---
 
 app.post('/api/itineraries/:id/finalize', async (req, res) => {
-  const { optimization } = req.body;
+  const { optimization, dayHotels } = req.body;
   const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(req.params.id);
   if (!itinerary) return res.status(404).json({ error: 'not found' });
 
   let proposal;
   try { proposal = JSON.parse(itinerary.proposal_json); } catch {
     return res.status(400).json({ error: 'no proposal to finalize' });
+  }
+
+  // Apply user's hotel assignments (overrides LLM proposal)
+  if (dayHotels && proposal.days) {
+    for (const day of proposal.days) {
+      if (dayHotels[day.day] !== undefined) {
+        day.hotel_id = dayHotels[day.day];
+      }
+    }
+    // Save updated proposal back
+    db.prepare(`UPDATE itineraries SET proposal_json = ? WHERE id = ?`)
+      .run(JSON.stringify(proposal), req.params.id);
   }
 
   let cardIds;
@@ -1454,8 +1497,20 @@ app.post('/api/itineraries/:id/finalize', async (req, res) => {
       if (c.timing) entry += ` | ${c.timing}`;
       return entry;
     }).join('\n');
-    return `Day ${day.day} — "${day.title}":\n${stopDetails}`;
+    const hotelForDay = day.hotel_id ? cardMap[day.hotel_id] : null;
+    const hotelNote = hotelForDay ? `\n  Hotel: ${hotelForDay.title} (ID=${hotelForDay.id})` : '';
+    return `Day ${day.day} — "${day.title}":${hotelNote}\n${stopDetails}`;
   }).join('\n\n');
+
+  // Hotel context for finalize
+  const hotels = cards.filter(c => c.category === 'hotel');
+  let hotelRules = '';
+  if (hotels.length >= 1) {
+    hotelRules = `\n- Hotels are accommodation — do NOT include them as stops`;
+    hotelRules += `\n- Each day has a hotel_id indicating where the group sleeps that night`;
+    hotelRules += `\n- All days start from and return to their assigned hotel`;
+    hotelRules += `\n- On city-change days, account for travel time between hotels (e.g. shinkansen)`;
+  }
 
   const systemPrompt = `You are a Japan travel expert creating a finalized day-by-day itinerary.
 
@@ -1468,9 +1523,10 @@ Return ONLY a valid JSON object (no markdown, no commentary) with this structure
       "day": 1,
       "title": "Day theme title",
       "date": "2025-04-01",
+      "hotel_id": 55,
       "stops": [
         {
-          "card_id": 55,
+          "card_id": 62,
           "order": 0,
           "suggested_time": "09:00",
           "duration_mins": 90,
@@ -1481,24 +1537,27 @@ Return ONLY a valid JSON object (no markdown, no commentary) with this structure
   ]
 }
 
-Rules:
-- card_id MUST be the exact ID numbers from the input (e.g. ID=55 means use 55)
-- Maintain the same day groupings from the proposal
+CRITICAL RULES:
+- DO NOT move cards between days. Each day's card_ids are FIXED from the proposal. You are only deciding the ORDER within each day and adding timing.
+- card_id MUST be the exact ID numbers shown (e.g. ID=55 means card_id: 55)
+- hotel_id MUST be preserved exactly from the proposal
 - Order stops within each day for optimal flow based on the "${optimization || 'balanced'}" optimization
 - Include realistic suggested_time values based on opening hours and travel time
-- Account for meals (leave gaps for lunch/dinner near restaurant stops)
-- If there is a single hotel, it is the base for the entire trip — all days start and end there. Do not include it as a stop; assume transit times are from/to this hotel.
-- Day 1 should account for jet lag/arrival time if flight info is provided
-- Last day should leave time for airport transfer if return flight info is provided`;
+- Account for meals (leave gaps for lunch/dinner near restaurant stops)${hotelRules}
+- Day 1 (ARRIVAL): The group has been on a plane for 10+ hours, clears immigration (~1hr), travels to the hotel (~1-2hrs), checks in. They are EXHAUSTED. Only schedule 1 ultra-light nearby activity (e.g. casual dinner walking distance from hotel). Earliest realistic start is 3-4 hours after landing. No ambitious plans.
+- Day 2 (JET LAG): The group is still heavily jet-lagged — likely waking at 4-5am and crashing by 3pm. Schedule only easy, low-energy, nearby/walkable activities. No long transit rides. Keep the day short and flexible.
+- Day 3+: Normal scheduling, jet lag mostly resolved.
+- TRAVEL DAYS (hotel changes): The group packs, checks out, takes a long train (2-3hrs shinkansen), checks into new hotel, unpacks. Set suggested_time for any activity AFTER 15:00 at earliest. Add a note like "After checking into [hotel name]". If no stops on this day, that's fine — it's just travel.
+- FINAL DAY (departure): Work backwards from flight time. Flight minus 3hrs (check-in/security) minus 1-2hrs (hotel-to-airport transit) minus 30min (pack & check out) = latest the last activity must END. If morning flight: no activities, just "pack and head to airport". If afternoon flight: at most 1 nearby morning activity with a note about when to leave. Add a note on the last stop with the leave-by time.`;
 
   const userPrompt = `Trip: ${settings.dateFrom || 'flexible'} to ${settings.dateTo || 'flexible'}
 Optimization: ${optimization || 'balanced'}
 ${flightContext}
 
-PROPOSED DAY GROUPINGS:
+PROPOSED DAY GROUPINGS (card assignments are FIXED — do not move cards between days):
 ${daysDescription}
 
-Finalize the schedule with ordered stops and timing. Return the JSON.`;
+For each day, order the stops and add timing. Do NOT reassign cards to different days. Return the JSON.`;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -1528,15 +1587,48 @@ Finalize the schedule with ordered stops and timing. Return the JSON.`;
     // Remap card IDs if LLM invented sequential ones instead of real DB IDs
     remapFinalData(finalData, cardIds);
 
+    // Enforce proposal's card-to-day assignment — LLM sometimes shuffles cards between days
+    if (finalData.days && proposal.days) {
+      for (let i = 0; i < finalData.days.length && i < proposal.days.length; i++) {
+        const proposedIds = proposal.days[i].card_ids || [];
+        const finalDay = finalData.days[i];
+        // Rebuild stops to match proposal's card IDs for this day
+        const existingStopMap = {};
+        for (const stop of (finalDay.stops || [])) {
+          existingStopMap[stop.card_id] = stop;
+        }
+        finalDay.stops = proposedIds.map((cid, order) => {
+          const existing = existingStopMap[cid];
+          return existing
+            ? { ...existing, card_id: cid, order }
+            : { card_id: cid, order, suggested_time: null, duration_mins: 60, note: '' };
+        });
+        // Preserve hotel_id from proposal
+        if (proposal.days[i].hotel_id && !finalDay.hotel_id) {
+          finalDay.hotel_id = proposal.days[i].hotel_id;
+        }
+
+        // Sort stops by suggested_time so they're in chronological order
+        finalDay.stops.sort((a, b) => {
+          if (!a.suggested_time && !b.suggested_time) return a.order - b.order;
+          if (!a.suggested_time) return 1;
+          if (!b.suggested_time) return -1;
+          return a.suggested_time.localeCompare(b.suggested_time);
+        });
+        // Re-number order after sort
+        finalDay.stops.forEach((s, idx) => { s.order = idx; });
+      }
+    }
+
     // Save final data
     db.prepare(`UPDATE itineraries SET final_json = ?, optimization = ?, phase = 'final', updated_at = datetime('now') WHERE id = ?`)
       .run(JSON.stringify(finalData), optimization || 'balanced', req.params.id);
 
-    // Update itinerary_days with ordered stops
+    // Update itinerary_days with ordered stops + hotel_id
     db.prepare('DELETE FROM itinerary_days WHERE itinerary_id = ?').run(req.params.id);
     const dayStmt = db.prepare(`
-      INSERT INTO itinerary_days (itinerary_id, day_number, date, title, stops_json)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO itinerary_days (itinerary_id, day_number, date, title, hotel_id, stops_json)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     for (const day of (finalData.days || [])) {
@@ -1545,6 +1637,7 @@ Finalize the schedule with ordered stops and timing. Return the JSON.`;
         day.day,
         day.date || null,
         day.title || `Day ${day.day}`,
+        day.hotel_id || null,
         JSON.stringify(day.stops || [])
       );
     }
@@ -1586,22 +1679,79 @@ app.post('/api/itineraries/:id/days/:dayNum/load', async (req, res) => {
   const cardMap = {};
   for (const c of allCards) cardMap[c.id] = c;
 
-  const hotelCard = allCards.find(c => c.category === 'hotel' && c.lat && c.lng);
+  // Use this day's assigned hotel (multi-hotel support)
+  const hotelCard = dayRow.hotel_id ? cardMap[dayRow.hotel_id] : allCards.find(c => c.category === 'hotel' && c.lat && c.lng);
 
-  // Build waypoints: hotel → stop1 → stop2 → ... → hotel
+  // Check context: hotel change, first day (arrival), last day (departure)
+  const allDayRows = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? ORDER BY day_number').all(id);
+  const prevDay = allDayRows.find(d => d.day_number < parseInt(dayNum) && d.hotel_id) || null;
+  const prevHotelCard = prevDay?.hotel_id ? cardMap[prevDay.hotel_id] : null;
+  const isHotelChange = prevHotelCard && hotelCard && prevHotelCard.id !== hotelCard.id;
+  const isFirstDay = allDayRows[0]?.day_number === parseInt(dayNum);
+  const isLastDay = allDayRows[allDayRows.length - 1]?.day_number === parseInt(dayNum);
+
+  // Load flights for airport routing
+  const flights = db.prepare('SELECT * FROM flights ORDER BY departure_time').all();
+  const outboundFlight = flights.find(f => f.direction === 'outbound');
+  const returnFlight = flights.find(f => f.direction === 'return');
+
+  // Build waypoints based on day type
   const namedWaypoints = [];
-  if (hotelCard) namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: hotelCard.title });
+
+  // Starting point
+  if (isFirstDay && outboundFlight?.arrival_airport) {
+    // Arrival day: Airport → Hotel (check in, drop bags) → stops → Hotel
+    namedWaypoints.push({ lat: null, lng: null, name: `${outboundFlight.arrival_airport} Airport`, address: `${outboundFlight.arrival_airport} Airport, Japan` });
+    if (hotelCard?.lat && hotelCard?.lng) {
+      namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: `${hotelCard.title} (check-in)` });
+    }
+  } else if (isHotelChange) {
+    // City change: start from previous hotel
+    namedWaypoints.push({ lat: prevHotelCard.lat, lng: prevHotelCard.lng, name: prevHotelCard.title });
+  } else if (hotelCard?.lat && hotelCard?.lng) {
+    // Normal day: start from today's hotel
+    namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: hotelCard.title });
+  }
+
+  // Stops
   for (const s of stops) {
     const card = cardMap[s.card_id];
     if (card?.lat && card?.lng) namedWaypoints.push({ lat: card.lat, lng: card.lng, name: card.title });
   }
-  if (hotelCard) namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: hotelCard.title });
+
+  // End point
+  if (isLastDay && returnFlight?.departure_airport) {
+    // Departure day: Hotel → stops → Airport
+    if (hotelCard?.lat && hotelCard?.lng) {
+      // Only add hotel before airport if we didn't already end at hotel
+      const lastWp = namedWaypoints[namedWaypoints.length - 1];
+      const isLastWpHotel = lastWp && hotelCard && lastWp.lat === hotelCard.lat && lastWp.lng === hotelCard.lng;
+      if (!isLastWpHotel) {
+        namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: `${hotelCard.title} (pick up bags)` });
+      }
+    }
+    namedWaypoints.push({ lat: null, lng: null, name: `${returnFlight.departure_airport} Airport`, address: `${returnFlight.departure_airport} Airport, Japan` });
+  } else if (hotelCard?.lat && hotelCard?.lng) {
+    // Normal: end at today's hotel
+    namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: hotelCard.title });
+  }
+
+  // Geocode any waypoints that only have an address (airports)
+  for (const wp of namedWaypoints) {
+    if (!wp.lat && wp.address) {
+      const loc = await geocode(wp.address);
+      if (loc) { wp.lat = loc.lat; wp.lng = loc.lng; }
+    }
+  }
+
+  // Filter out waypoints we couldn't geocode
+  const validWaypoints = namedWaypoints.filter(wp => wp.lat && wp.lng);
 
   const legs = [];
-  if (namedWaypoints.length >= 2) {
-    for (let i = 0; i < namedWaypoints.length - 1; i++) {
-      const from = namedWaypoints[i];
-      const to = namedWaypoints[i + 1];
+  if (validWaypoints.length >= 2) {
+    for (let i = 0; i < validWaypoints.length - 1; i++) {
+      const from = validWaypoints[i];
+      const to = validWaypoints[i + 1];
       try {
         // Try walking first — use if under 30 mins
         const walkResult = await fetchDirections(`${from.lat},${from.lng}`, `${to.lat},${to.lng}`);
@@ -1661,16 +1811,15 @@ app.post('/api/itineraries/:id/days/:dayNum/enrich', async (req, res) => {
 
   let extraContext = '';
 
-  // Hotel context — find the single hotel card if it exists
+  // Hotel context — use this day's assigned hotel
   let allCardIds;
   try { allCardIds = JSON.parse(itinerary.card_ids); } catch { allCardIds = []; }
   if (allCardIds.length) {
     const allPlaceholders = allCardIds.map(() => '?').join(',');
     const allCards = db.prepare(`SELECT * FROM cards WHERE id IN (${allPlaceholders})`).all(...allCardIds);
-    const hotels = allCards.filter(c => c.category === 'hotel');
-    if (hotels.length === 1) {
-      const h = hotels[0];
-      extraContext += `\n\nHOTEL: The group is staying at ${h.title}${h.address ? ` (${h.address})` : ''} for the entire trip. All days start and end here. Include transit directions from/to this hotel.`;
+    const hotelCard = dayRow.hotel_id ? allCards.find(c => c.id === dayRow.hotel_id) : allCards.find(c => c.category === 'hotel');
+    if (hotelCard) {
+      extraContext += `\n\nHOTEL: The group is staying at ${hotelCard.title}${hotelCard.address ? ` (${hotelCard.address})` : ''} tonight. This day starts and ends at this hotel. Include transit directions from/to it.`;
     }
   }
 

@@ -259,8 +259,8 @@ export async function proposeItinerary(id, onStatus) {
   return streamSSE(`${BASE}/itineraries/${id}/propose`, {}, onStatus);
 }
 
-export async function finalizeItinerary(id, optimization, onStatus) {
-  return streamSSE(`${BASE}/itineraries/${id}/finalize`, { optimization }, onStatus);
+export async function finalizeItinerary(id, optimization, onStatus, dayHotels) {
+  return streamSSE(`${BASE}/itineraries/${id}/finalize`, { optimization, dayHotels }, onStatus);
 }
 
 export async function* streamDayEnrichment(itineraryId, dayNum) {

@@ -104,7 +104,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
   const [loadingDay, setLoadingDay] = useState(null);
 
   // --- Finalize with optimization, then load routes day by day ---
-  const handleFinalize = useCallback(async (optimization) => {
+  const handleFinalize = useCallback(async (optimization, dayHotels) => {
     if (!activeId) return;
     setError(null);
     setStatus('Building your schedule...');
@@ -112,7 +112,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
     setDayData({});
 
     try {
-      await finalizeItinerary(activeId, optimization, (s) => setStatus(s));
+      await finalizeItinerary(activeId, optimization, (s) => setStatus(s), dayHotels);
 
       // Reload itinerary to get the day structure
       const data = await fetchItinerary(activeId);

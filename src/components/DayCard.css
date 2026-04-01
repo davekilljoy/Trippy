@@ -69,6 +69,16 @@
   color: var(--muted);
 }
 
+.day-card-hotel {
+  font-size: 0.62rem;
+  color: var(--gold);
+  background: var(--paper);
+  border: 1px solid var(--border);
+  padding: 0.1rem 0.4rem;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
 /* Stops list */
 .day-card-stops {
   margin-bottom: 1rem;
