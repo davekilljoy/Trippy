@@ -2,16 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   createItinerary, fetchItineraries, fetchItinerary, deleteItinerary,
   proposeItinerary, finalizeItinerary, loadDayRoutes, generateSkeleton,
-  fetchFlights, createFlight, updateFlight, deleteFlight,
 } from '../lib/api.js';
 import ProposalReview from './ProposalReview.jsx';
 import DayCard from './DayCard.jsx';
 import FlightCard from './FlightCard.jsx';
-import FlightForm from './FlightForm.jsx';
 import SkeletonBuilder from './SkeletonBuilder.jsx';
 import './ItineraryPanel.css';
 
-export default function ItineraryPanel({ approvedCards, pendingCards }) {
+export default function ItineraryPanel({ approvedCards, pendingCards, flights, onEditFlight, onDeleteFlight }) {
   // Itinerary state
   const [versions, setVersions] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -24,14 +22,9 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
   const [showModePicker, setShowModePicker] = useState(false);
   const modePickerRef = useRef(null);
 
-  // Flights
-  const [flights, setFlights] = useState([]);
-  const [flightModal, setFlightModal] = useState(null); // null | { flight } | {}
-
-  // Load versions + flights on mount
+  // Load versions on mount
   useEffect(() => {
     loadVersions();
-    loadFlights();
   }, []);
 
   const loadVersions = async () => {
@@ -62,11 +55,6 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
     } catch (err) {
       setError(err.message);
     }
-  };
-
-  const loadFlights = async () => {
-    const f = await fetchFlights();
-    setFlights(f);
   };
 
   // --- Build new itinerary ---
@@ -209,22 +197,6 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
     await loadVersions();
   };
 
-  // --- Flight management ---
-  const handleSaveFlight = async (data) => {
-    if (flightModal?.flight?.id) {
-      await updateFlight(flightModal.flight.id, data);
-    } else {
-      await createFlight(data);
-    }
-    await loadFlights();
-    setFlightModal(null);
-  };
-
-  const handleDeleteFlight = async (id) => {
-    await deleteFlight(id);
-    await loadFlights();
-  };
-
   const outboundFlight = flights.find(f => f.direction === 'outbound');
   const returnFlight = flights.find(f => f.direction === 'return');
 
@@ -276,27 +248,6 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
             </div>
           </div>
         )}
-
-        {/* Flights */}
-        <div className="sidebar-section">
-          <h3 className="sidebar-heading">
-            Flights
-            <button className="add-flight-btn" onClick={() => setFlightModal({})}>+ Add</button>
-          </h3>
-          {flights.length === 0 ? (
-            <p className="sidebar-empty">No flights added yet.</p>
-          ) : (
-            <div className="sidebar-flights">
-              {flights.map(f => (
-                <div key={f.id} className="sidebar-flight-item">
-                  <span className="sidebar-flight-dir">{f.direction === 'outbound' ? '→' : '←'}</span>
-                  <span>{f.departure_airport || '?'} — {f.arrival_airport || '?'}</span>
-                  <button className="sidebar-flight-edit" onClick={() => setFlightModal({ flight: f })}>Edit</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
 
         {/* Approved cards */}
         <div className="sidebar-section">
@@ -384,8 +335,8 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
             {outboundFlight && (
               <FlightCard
                 flight={outboundFlight}
-                onEdit={(f) => setFlightModal({ flight: f })}
-                onDelete={handleDeleteFlight}
+                onEdit={() => onEditFlight(outboundFlight)}
+                onDelete={onDeleteFlight}
               />
             )}
 
@@ -418,22 +369,14 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
             {returnFlight && phase === 'complete' && (
               <FlightCard
                 flight={returnFlight}
-                onEdit={(f) => setFlightModal({ flight: f })}
-                onDelete={handleDeleteFlight}
+                onEdit={() => onEditFlight(returnFlight)}
+                onDelete={onDeleteFlight}
               />
             )}
           </div>
         )}
       </main>
 
-      {/* Flight form modal */}
-      {flightModal && (
-        <FlightForm
-          flight={flightModal.flight || null}
-          onSave={handleSaveFlight}
-          onClose={() => setFlightModal(null)}
-        />
-      )}
     </div>
   );
 }

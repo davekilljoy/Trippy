@@ -4,9 +4,36 @@ import Board from './components/Board.jsx';
 import ItineraryPanel from './components/ItineraryPanel.jsx';
 import CardModal from './components/CardModal.jsx';
 import IdeaPicker from './components/IdeaPicker.jsx';
-import { fetchCards, fetchSettings, saveSettings, createCard, updateCard, deleteCard, toggleApproval, bulkCreateCards, generateIdeas } from './lib/api.js';
+import TripDetailsModal from './components/TripDetailsModal.jsx';
+import { fetchCards, fetchSettings, saveSettings, createCard, updateCard, deleteCard, toggleApproval, bulkCreateCards, generateIdeas, fetchFlights, createFlight, updateFlight, deleteFlight } from './lib/api.js';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
+function formatFlightTime(isoStr) {
+  if (!isoStr) return null;
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleString('en-GB', {
+      day: 'numeric', month: 'short',
+      hour: '2-digit', minute: '2-digit',
+      hour12: false,
+    });
+  } catch { return null; }
+}
+
+function countDays(from, to) {
+  if (!from || !to) return null;
+  const a = new Date(from + 'T00:00:00');
+  const b = new Date(to + 'T00:00:00');
+  const diff = Math.round((b - a) / (1000 * 60 * 60 * 24));
+  return diff > 0 ? diff : null;
+}
+
+function formatTravellers(adults, children) {
+  const parts = [`${adults} Adult${adults !== 1 ? 's' : ''}`];
+  if (children.length) parts.push(`${children.length} Child${children.length !== 1 ? 'ren' : ''}`);
+  return parts.join(', ');
+}
 
 export default function App() {
   const [view, setView] = useState('board');
@@ -18,6 +45,10 @@ export default function App() {
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [showTripModal, setShowTripModal] = useState(false);
+
+  // Flights (lifted from ItineraryPanel)
+  const [flights, setFlights] = useState([]);
 
   // Generate bar + picker state
   const [genPrompt, setGenPrompt] = useState('');
@@ -26,14 +57,20 @@ export default function App() {
   const [pickerIdeas, setPickerIdeas] = useState(null);
   const [followUpLoading, setFollowUpLoading] = useState(false);
 
-  // Load settings + cards on mount
+  // Load settings + cards + flights on mount
   const loadCards = useCallback(async () => {
     const data = await fetchCards();
     setCards(data);
   }, []);
 
+  const loadFlights = useCallback(async () => {
+    const f = await fetchFlights();
+    setFlights(f);
+  }, []);
+
   useEffect(() => {
     loadCards();
+    loadFlights();
     fetchSettings().then(s => {
       if (s.destination !== undefined) setDestination(s.destination);
       if (s.dateFrom !== undefined) setDateFrom(s.dateFrom);
@@ -42,7 +79,7 @@ export default function App() {
       if (s.children !== undefined) setChildren(s.children);
       setSettingsLoaded(true);
     });
-  }, [loadCards]);
+  }, [loadCards, loadFlights]);
 
   // Save settings to server on change (debounced)
   useEffect(() => {
@@ -52,6 +89,29 @@ export default function App() {
     }, 500);
     return () => clearTimeout(timer);
   }, [destination, dateFrom, dateTo, adults, children, settingsLoaded]);
+
+  // Flight management
+  const handleSaveFlight = async (data, existing) => {
+    if (existing?.id) {
+      await updateFlight(existing.id, data);
+    } else {
+      await createFlight(data);
+    }
+    await loadFlights();
+  };
+
+  const handleDeleteFlight = async (id) => {
+    await deleteFlight(id);
+    await loadFlights();
+  };
+
+  const handleTripDetailsSave = ({ destination: d, dateFrom: df, dateTo: dt, adults: a, children: c }) => {
+    setDestination(d);
+    setDateFrom(df);
+    setDateTo(dt);
+    setAdults(a);
+    setChildren(c);
+  };
 
   const handleCreate = async (data) => {
     await createCard(data);
@@ -116,60 +176,49 @@ export default function App() {
     setPickerIdeas(null);
   };
 
-  const addChild = () => setChildren(c => [...c, 8]);
-  const removeChild = (i) => setChildren(c => c.filter((_, idx) => idx !== i));
-  const setChildAge = (i, age) => setChildren(c => c.map((a, idx) => idx === i ? Number(age) : a));
-
   const approvedCards = cards.filter(c => c.david_approved && c.jen_approved);
   const pendingCards = cards.filter(c => !(c.david_approved && c.jen_approved));
+
+  const outboundFlight = flights.find(f => f.direction === 'outbound');
+  const returnFlight = flights.find(f => f.direction === 'return');
 
   return (
     <APIProvider apiKey={GOOGLE_MAPS_KEY}>
       <header className="app-header">
-        <h1 className="app-title">Japan Planner <span>日本の旅</span></h1>
-        <div className="header-controls">
-          <input
-            type="text"
-            value={destination}
-            onChange={e => setDestination(e.target.value)}
-            className="dest-input"
-            placeholder="Where in Japan?"
-          />
-          <span className="header-sep">|</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
-            className="date-input"
-          />
-          <span className="date-sep">—</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
-            className="date-input"
-          />
-          <span className="header-sep">|</span>
-          <div className="stepper-inline">
-            <button onClick={() => setAdults(Math.max(1, adults - 1))}>−</button>
-            <span>{adults} adult{adults !== 1 ? 's' : ''}</span>
-            <button onClick={() => setAdults(adults + 1)}>+</button>
-          </div>
-          {children.map((age, i) => (
-            <div key={i} className="child-tag">
-              <span>child</span>
-              <input
-                type="number"
-                min="0"
-                max="17"
-                value={age}
-                onChange={e => setChildAge(i, e.target.value)}
-                className="child-age-input"
-              />
-              <button onClick={() => removeChild(i)}>×</button>
-            </div>
-          ))}
-          <button className="add-child-inline" onClick={addChild}>+ child</button>
+        <h1 className="app-title">Japlanner <span>日本の旅</span></h1>
+        <div className="header-details" onClick={() => setShowTripModal(true)}>
+          {/* Arrive */}
+          <span className="header-chip">
+            <span className="header-label">Arrive</span>
+            {outboundFlight
+              ? <>{outboundFlight.arrival_airport || '?'} {formatFlightTime(outboundFlight.arrival_time) || '—'}</>
+              : <span className="header-muted">—</span>
+            }
+          </span>
+          <span className="header-sep">·</span>
+          {/* Days */}
+          <span className="header-chip">
+            {countDays(dateFrom, dateTo)
+              ? <>{countDays(dateFrom, dateTo)} days</>
+              : <span className="header-muted">— days</span>
+            }
+          </span>
+          <span className="header-sep">·</span>
+          {/* Locations */}
+          <span className="header-chip">{destination || <span className="header-muted">No destination</span>}</span>
+          <span className="header-sep">·</span>
+          {/* Travellers */}
+          <span className="header-chip">{formatTravellers(adults, children)}</span>
+          <span className="header-sep">·</span>
+          {/* Depart */}
+          <span className="header-chip">
+            <span className="header-label">Depart</span>
+            {returnFlight
+              ? <>{returnFlight.departure_airport || '?'} {formatFlightTime(returnFlight.departure_time) || '—'}</>
+              : <span className="header-muted">—</span>
+            }
+          </span>
+          <span className="header-edit-hint">Edit</span>
         </div>
         <nav className="app-nav">
           <button
@@ -201,6 +250,9 @@ export default function App() {
         <ItineraryPanel
           approvedCards={approvedCards}
           pendingCards={pendingCards}
+          flights={flights}
+          onEditFlight={() => setShowTripModal(true)}
+          onDeleteFlight={handleDeleteFlight}
         />
       )}
 
@@ -210,6 +262,22 @@ export default function App() {
           card={modal.card || null}
           onSave={modal.mode === 'add' ? handleCreate : (data) => handleUpdate(modal.card.id, data)}
           onClose={() => setModal(null)}
+        />
+      )}
+
+      {/* Trip details modal */}
+      {showTripModal && (
+        <TripDetailsModal
+          destination={destination}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          adults={adults}
+          children={children}
+          flights={flights}
+          onSave={handleTripDetailsSave}
+          onSaveFlight={handleSaveFlight}
+          onDeleteFlight={handleDeleteFlight}
+          onClose={() => setShowTripModal(false)}
         />
       )}
 

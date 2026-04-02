@@ -74,28 +74,37 @@ body::before {
   font-size: 1.1rem;
 }
 
-.header-controls {
+.header-details {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   flex-wrap: wrap;
-}
-
-.dest-input {
-  font-family: var(--font-body);
-  font-size: 0.78rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
   border-radius: var(--radius);
-  background: transparent;
-  color: var(--ink);
-  width: 140px;
-  transition: border-color 0.15s;
+  transition: background 0.15s;
 }
 
-.dest-input:focus {
-  outline: none;
-  border-color: var(--ink);
+.header-details:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.header-chip {
+  font-size: 0.78rem;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.header-label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-right: 0.3rem;
+}
+
+.header-muted {
+  color: var(--muted);
 }
 
 .header-sep {
@@ -104,110 +113,18 @@ body::before {
   margin: 0 0.1rem;
 }
 
-.date-input {
-  font-family: var(--font-body);
-  font-size: 0.78rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--ink);
-  transition: border-color 0.15s;
-}
-
-.date-input:focus {
-  outline: none;
-  border-color: var(--ink);
-}
-
-.date-sep {
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-.stepper-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.15rem 0.3rem;
-}
-
-.stepper-inline button {
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  font-size: 0.85rem;
-  color: var(--ink);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.stepper-inline button:hover {
-  background: var(--border);
-}
-
-.stepper-inline span {
-  font-size: 0.72rem;
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-.child-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.15rem 0.3rem;
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-.child-age-input {
-  width: 32px;
-  font-family: var(--font-body);
-  font-size: 0.72rem;
-  padding: 0.1rem 0.2rem;
-  border: none;
-  background: transparent;
-  color: var(--ink);
-  text-align: center;
-}
-
-.child-age-input:focus {
-  outline: none;
-}
-
-.child-tag button {
-  background: none;
-  border: none;
-  color: var(--red);
-  font-size: 0.8rem;
-  padding: 0;
-  line-height: 1;
-}
-
-.add-child-inline {
-  font-family: var(--font-body);
-  font-size: 0.68rem;
+.header-edit-hint {
+  font-size: 0.6rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 0.2rem 0.4rem;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-  background: transparent;
+  letter-spacing: 0.1em;
   color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+  margin-left: 0.2rem;
 }
 
-.add-child-inline:hover {
-  border-color: var(--ink);
-  color: var(--ink);
+.header-details:hover .header-edit-hint {
+  opacity: 1;
 }
 
 .app-nav {
@@ -384,23 +301,13 @@ a:hover {
     display: none;
   }
 
-  .header-controls {
+  .header-details {
     justify-content: center;
     gap: 0.35rem;
   }
 
   .header-sep {
     display: none;
-  }
-
-  .dest-input {
-    width: 100%;
-    text-align: center;
-  }
-
-  .date-input {
-    flex: 1;
-    min-width: 0;
   }
 
   .app-nav {
