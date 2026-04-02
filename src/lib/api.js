@@ -175,11 +175,11 @@ export async function* streamItinerary(cardIds) {
 
 // --- Itineraries ---
 
-export async function createItinerary(cardIds, name) {
+export async function createItinerary(cardIds, name, mode) {
   const res = await fetch(`${BASE}/itineraries`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ card_ids: cardIds, name }),
+    body: JSON.stringify({ card_ids: cardIds, name, mode }),
   });
   if (!res.ok) throw new Error('Failed to create itinerary');
   return res.json();
@@ -312,6 +312,47 @@ export async function loadDayRoutes(itineraryId, dayNum) {
     headers: { 'Content-Type': 'application/json' },
   });
   if (!res.ok) throw new Error('Failed to load day routes');
+  return res.json();
+}
+
+// --- V2: Skeleton & Slots ---
+
+export async function generateSkeleton(itineraryId) {
+  const res = await fetch(`${BASE}/itineraries/${itineraryId}/skeleton`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('Failed to generate skeleton');
+  return res.json();
+}
+
+export async function updateDaySlots(itineraryId, dayNum, slots) {
+  const res = await fetch(`${BASE}/itineraries/${itineraryId}/days/${dayNum}/slots`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slots }),
+  });
+  if (!res.ok) throw new Error('Failed to update slots');
+  return res.json();
+}
+
+export async function updateLegs(itineraryId, legs) {
+  const res = await fetch(`${BASE}/itineraries/${itineraryId}/legs`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ legs }),
+  });
+  if (!res.ok) throw new Error('Failed to update legs');
+  return res.json();
+}
+
+export async function suggestForSlots(itineraryId, dayNum, { slots, anchor_lat, anchor_lng, placed_card_ids }) {
+  const res = await fetch(`${BASE}/itineraries/${itineraryId}/days/${dayNum}/suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slots, anchor_lat, anchor_lng, placed_card_ids }),
+  });
+  if (!res.ok) throw new Error('Failed to get suggestions');
   return res.json();
 }
 

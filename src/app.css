@@ -16,14 +16,14 @@
   --muted: #8a8478;
   --border: #d4cec2;
   --card-bg: #faf6ed;
-  --font-display: 'Fraunces', serif;
-  --font-body: 'DM Mono', monospace;
-  --font-jp: 'Shippori Mincho', serif;
+  --font-display: 'DM Sans', 'Inter', system-ui, sans-serif;
+  --font-body: 'DM Sans', 'Inter', system-ui, sans-serif;
+  --font-jp: 'DM Sans', 'Inter', system-ui, sans-serif;
   --radius: 6px;
 }
 
 html {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 body {

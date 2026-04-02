@@ -1,0 +1,62 @@
+.split-divider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  margin: 0 0.8rem;
+}
+
+.split-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--border);
+}
+
+.split-action {
+  position: relative;
+  z-index: 2;
+  font-family: var(--font-body);
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.12rem 0.5rem;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.split-btn {
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--border);
+}
+
+.split-btn:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.merge-btn {
+  color: var(--gold);
+  background: var(--paper);
+  border: 1px solid var(--gold);
+}
+
+.merge-btn:hover {
+  background: var(--gold);
+  color: var(--paper);
+}
+
+.between-legs {
+  height: 28px;
+  margin: 0.3rem 0.8rem;
+}
+
+.between-legs .split-line {
+  height: 2px;
+  background: color-mix(in srgb, var(--gold) 30%, var(--border));
+}

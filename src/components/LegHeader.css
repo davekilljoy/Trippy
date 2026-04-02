@@ -1,0 +1,110 @@
+.leg-header {
+  position: relative;
+  margin-bottom: 0.4rem;
+}
+
+.leg-hotel-info {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  background: color-mix(in srgb, var(--gold) 8%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--gold) 25%, var(--border));
+  border-radius: var(--radius);
+}
+
+.leg-hotel-icon {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.leg-hotel-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 0.88rem;
+  color: var(--ink);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.leg-hotel-name:hover {
+  color: var(--gold);
+}
+
+.leg-hotel-arrow {
+  font-size: 0.6rem;
+  color: var(--muted);
+}
+
+.leg-date-range {
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.leg-day-count {
+  font-family: var(--font-body);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* Hotel picker dropdown */
+.leg-hotel-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 15;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  margin-top: 0.2rem;
+  overflow: hidden;
+}
+
+.leg-hotel-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--ink);
+  transition: background 0.1s;
+}
+
+.leg-hotel-option:hover {
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
+}
+
+.leg-hotel-option.active {
+  background: color-mix(in srgb, var(--gold) 15%, transparent);
+  font-weight: 600;
+}
+
+.leg-hotel-option + .leg-hotel-option {
+  border-top: 1px solid var(--border);
+}
+
+.leg-hotel-addr {
+  font-size: 0.62rem;
+  color: var(--muted);
+}

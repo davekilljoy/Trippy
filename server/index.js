@@ -50,6 +50,7 @@ db.exec(`
     version INTEGER NOT NULL DEFAULT 1,
     name TEXT,
     card_ids TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'v1',
     optimization TEXT,
     phase TEXT NOT NULL DEFAULT 'draft',
     proposal_json TEXT,
@@ -99,6 +100,7 @@ try { db.exec('ALTER TABLE cards ADD COLUMN place_id TEXT'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN opening_hours TEXT'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN price_level INTEGER'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN business_status TEXT'); } catch {}
+try { db.exec('ALTER TABLE itineraries ADD COLUMN mode TEXT NOT NULL DEFAULT \'v1\''); } catch {}
 
 
 const app = express();
@@ -150,27 +152,31 @@ app.get('/api/cards', (req, res) => {
 });
 
 app.post('/api/cards', (req, res) => {
-  const { title, description, address, image_url, link_url, category, timing, david_note, jen_note } = req.body;
+  const { title, description, address, lat, lng, image_url, link_url, category, timing, david_note, jen_note, david_approved, jen_approved } = req.body;
   if (!title) return res.status(400).json({ error: 'title is required' });
 
   const stmt = db.prepare(`
-    INSERT INTO cards (title, description, address, image_url, link_url, category, timing, david_note, jen_note)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO cards (title, description, address, lat, lng, image_url, link_url, category, timing, david_note, jen_note, david_approved, jen_approved)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const info = stmt.run(
     title,
     description || null,
     address || null,
+    lat || null,
+    lng || null,
     image_url || null,
     link_url || null,
     category || 'attraction',
     timing || null,
     david_note || null,
-    jen_note || null
+    jen_note || null,
+    david_approved ? 1 : 0,
+    jen_approved ? 1 : 0
   );
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
-  // Geocode + enrich with Google Places data in background
-  geocodeCard(card).catch(() => {});
+  // Geocode + enrich with Google Places data in background (skip if lat/lng already provided)
+  if (!lat || !lng) geocodeCard(card).catch(() => {});
   enrichCardPlaceData(card).catch(() => {});
   res.status(201).json(card);
 });
@@ -1069,8 +1075,10 @@ ${cardList}`;
 // --- Itinerary CRUD ---
 
 app.post('/api/itineraries', (req, res) => {
-  const { card_ids, name } = req.body;
+  const { card_ids, name, mode } = req.body;
   if (!card_ids?.length) return res.status(400).json({ error: 'card_ids required' });
+
+  const itinMode = mode === 'v2' ? 'v2' : 'v1';
 
   // Determine version number (increment from max version for same card set)
   const cardIdsJson = JSON.stringify([...card_ids].sort((a, b) => a - b));
@@ -1078,16 +1086,16 @@ app.post('/api/itineraries', (req, res) => {
   const version = (existing?.maxVer || 0) + 1;
 
   const stmt = db.prepare(`
-    INSERT INTO itineraries (version, name, card_ids, phase)
-    VALUES (?, ?, ?, 'draft')
+    INSERT INTO itineraries (version, name, card_ids, mode, phase)
+    VALUES (?, ?, ?, ?, 'draft')
   `);
-  const info = stmt.run(version, name || `v${version}`, cardIdsJson);
+  const info = stmt.run(version, name || `v${version}`, cardIdsJson, itinMode);
   const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(itinerary);
 });
 
 app.get('/api/itineraries', (req, res) => {
-  const rows = db.prepare('SELECT id, version, name, phase, optimization, created_at, updated_at FROM itineraries ORDER BY created_at DESC').all();
+  const rows = db.prepare('SELECT id, version, name, mode, phase, optimization, created_at, updated_at FROM itineraries ORDER BY created_at DESC').all();
   res.json(rows);
 });
 
@@ -1114,11 +1122,20 @@ app.get('/api/itineraries/:id', (req, res) => {
   let final_data;
   try { final_data = JSON.parse(itinerary.final_json || 'null'); } catch { final_data = null; }
 
+  // Collect card IDs from slots too (LLM-created cards may not be in card_ids)
+  const slotCardIds = new Set();
+  for (const day of days) {
+    for (const stop of (day.stops || [])) {
+      if (stop.card_id) slotCardIds.add(stop.card_id);
+    }
+  }
+  const allCardIds = [...new Set([...cardIds, ...slotCardIds])];
+
   // Include actual card data so frontend doesn't depend on current approvedCards
   let cards = [];
-  if (cardIds.length) {
-    const placeholders = cardIds.map(() => '?').join(',');
-    cards = db.prepare(`SELECT * FROM cards WHERE id IN (${placeholders})`).all(...cardIds);
+  if (allCardIds.length) {
+    const placeholders = allCardIds.map(() => '?').join(',');
+    cards = db.prepare(`SELECT * FROM cards WHERE id IN (${placeholders})`).all(...allCardIds);
   }
 
   res.json({ ...itinerary, card_ids: cardIds, proposal, final_data, days, cards });
@@ -1149,6 +1166,291 @@ app.delete('/api/itineraries/:id', (req, res) => {
   const info = db.prepare('DELETE FROM itineraries WHERE id = ?').run(req.params.id);
   if (!info.changes) return res.status(404).json({ error: 'not found' });
   res.json({ deleted: true });
+});
+
+// --- V2: Skeleton generation ---
+
+function generateSlotTemplate(dayType, flights) {
+  const id = () => Math.random().toString(36).slice(2, 10);
+  const returnFlight = flights?.find(f => f.direction === 'return');
+
+  switch (dayType) {
+    case 'arrival':
+      return [
+        { slot_id: id(), slot_type: 'afternoon', card_id: null, order: 0 },
+        { slot_id: id(), slot_type: 'evening', card_id: null, order: 1 },
+      ];
+    case 'jet_lag':
+      return [
+        { slot_id: id(), slot_type: 'morning', card_id: null, order: 0 },
+        { slot_id: id(), slot_type: 'midday', card_id: null, order: 1 },
+        { slot_id: id(), slot_type: 'afternoon', card_id: null, order: 2 },
+        { slot_id: id(), slot_type: 'evening', card_id: null, order: 3 },
+      ];
+    case 'departure': {
+      const depHour = returnFlight?.departure_time ? parseInt(returnFlight.departure_time.split(':')[0]) : 0;
+      if (depHour >= 15) {
+        return [
+          { slot_id: id(), slot_type: 'morning', card_id: null, order: 0 },
+        ];
+      }
+      return [];
+    }
+    case 'travel':
+      return [
+        { slot_id: id(), slot_type: 'morning', card_id: null, order: 0 },
+        { slot_id: id(), slot_type: 'midday', card_id: null, order: 1 },
+      ];
+    default: // normal
+      return [
+        { slot_id: id(), slot_type: 'morning', card_id: null, order: 0 },
+        { slot_id: id(), slot_type: 'midday', card_id: null, order: 1 },
+        { slot_id: id(), slot_type: 'afternoon', card_id: null, order: 2 },
+        { slot_id: id(), slot_type: 'evening', card_id: null, order: 3 },
+        { slot_id: id(), slot_type: 'after_hours', card_id: null, order: 4 },
+      ];
+  }
+}
+
+app.post('/api/itineraries/:id/skeleton', (req, res) => {
+  const itinId = Number(req.params.id);
+  const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(itinId);
+  if (!itinerary) return res.status(404).json({ error: 'not found' });
+  if (itinerary.mode !== 'v2') return res.status(400).json({ error: 'skeleton only for v2 itineraries' });
+
+  let cardIds;
+  try { cardIds = JSON.parse(itinerary.card_ids); } catch { cardIds = []; }
+
+  const placeholders = cardIds.length ? cardIds.map(() => '?').join(',') : '0';
+  const cards = cardIds.length ? db.prepare(`SELECT * FROM cards WHERE id IN (${placeholders})`).all(...cardIds) : [];
+
+  const settingsRows = db.prepare('SELECT key, value FROM settings').all();
+  const settings = {};
+  for (const row of settingsRows) {
+    try { settings[row.key] = JSON.parse(row.value); } catch { settings[row.key] = row.value; }
+  }
+
+  const flights = db.prepare('SELECT * FROM flights ORDER BY departure_time').all();
+  const hotels = cards.filter(c => c.category === 'hotel');
+  const firstHotel = hotels[0] || null;
+
+  const skeleton = buildDaySkeleton(cards, hotels, flights, settings);
+  if (!skeleton) return res.status(400).json({ error: 'Could not build skeleton — check trip dates' });
+
+  // Clear any existing days
+  db.prepare('DELETE FROM itinerary_days WHERE itinerary_id = ?').run(itinId);
+
+  const dayStmt = db.prepare(`
+    INSERT INTO itinerary_days (itinerary_id, day_number, date, title, hotel_id, stops_json)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  const daysOut = [];
+  for (const day of skeleton.days) {
+    const slots = generateSlotTemplate(day.type, flights);
+    const hotelId = firstHotel ? firstHotel.id : null;
+    const title = day.type === 'normal' ? `Day ${day.day}` : `Day ${day.day} (${day.type})`;
+    dayStmt.run(itinId, day.day, day.date, title, hotelId, JSON.stringify(slots));
+    daysOut.push({
+      day_number: day.day,
+      date: day.date,
+      title,
+      type: day.type,
+      hotel_id: hotelId,
+      slots,
+    });
+  }
+
+  // Update phase
+  db.prepare("UPDATE itineraries SET phase = 'skeleton', updated_at = datetime('now') WHERE id = ?").run(itinId);
+
+  res.json({
+    days: daysOut,
+    hotels: hotels.map(h => ({ id: h.id, title: h.title, address: h.address, lat: h.lat, lng: h.lng })),
+  });
+});
+
+// --- V2: Update day slots ---
+
+app.patch('/api/itineraries/:id/days/:dayNum/slots', (req, res) => {
+  const itinId = Number(req.params.id);
+  const dayNum = Number(req.params.dayNum);
+  const { slots } = req.body;
+  if (!Array.isArray(slots)) return res.status(400).json({ error: 'slots array required' });
+
+  const day = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? AND day_number = ?').get(itinId, dayNum);
+  if (!day) return res.status(404).json({ error: 'day not found' });
+
+  db.prepare('UPDATE itinerary_days SET stops_json = ? WHERE id = ?').run(JSON.stringify(slots), day.id);
+  res.json({ ok: true, slots });
+});
+
+// --- V2: Update legs (hotel assignments) ---
+
+app.patch('/api/itineraries/:id/legs', (req, res) => {
+  const itinId = Number(req.params.id);
+  const { legs } = req.body;
+  if (!Array.isArray(legs)) return res.status(400).json({ error: 'legs array required' });
+
+  const days = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? ORDER BY day_number').all(itinId);
+  if (!days.length) return res.status(404).json({ error: 'no days found' });
+
+  const updateStmt = db.prepare('UPDATE itinerary_days SET hotel_id = ? WHERE itinerary_id = ? AND day_number = ?');
+  const updateMany = db.transaction((legs) => {
+    for (const leg of legs) {
+      for (let d = leg.startDay; d <= leg.endDay; d++) {
+        updateStmt.run(leg.hotel_id, itinId, d);
+      }
+    }
+  });
+  updateMany(legs);
+
+  const updated = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? ORDER BY day_number').all(itinId);
+  for (const day of updated) {
+    try { day.stops = JSON.parse(day.stops_json); } catch { day.stops = []; }
+  }
+  res.json({ days: updated });
+});
+
+// --- V2: LLM slot suggestions ---
+
+app.post('/api/itineraries/:id/days/:dayNum/suggest', async (req, res) => {
+  const itinId = Number(req.params.id);
+  const dayNum = Number(req.params.dayNum);
+  const { slots: requestedSlots, anchor_lat, anchor_lng, placed_card_ids } = req.body;
+
+  const itinerary = db.prepare('SELECT * FROM itineraries WHERE id = ?').get(itinId);
+  if (!itinerary) return res.status(404).json({ error: 'not found' });
+
+  const day = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? AND day_number = ?').get(itinId, dayNum);
+  if (!day) return res.status(404).json({ error: 'day not found' });
+
+  let currentSlots;
+  try { currentSlots = JSON.parse(day.stops_json); } catch { currentSlots = []; }
+
+  // Load context
+  const settingsRows = db.prepare('SELECT key, value FROM settings').all();
+  const settings = {};
+  for (const row of settingsRows) {
+    try { settings[row.key] = JSON.parse(row.value); } catch { settings[row.key] = row.value; }
+  }
+
+  const hotel = day.hotel_id ? db.prepare('SELECT * FROM cards WHERE id = ?').get(day.hotel_id) : null;
+  const hotelCity = hotel?.lat && hotel?.lng ? nearestCity(hotel.lat, hotel.lng) : (settings.destination || 'the area');
+
+  // Build context of what's already scheduled
+  let cardIds;
+  try { cardIds = JSON.parse(itinerary.card_ids); } catch { cardIds = []; }
+  const allCards = cardIds.length ? db.prepare(`SELECT * FROM cards WHERE id IN (${cardIds.map(() => '?').join(',')})`).all(...cardIds) : [];
+  const placedSet = new Set(placed_card_ids || []);
+  const unplacedCards = allCards.filter(c => !placedSet.has(c.id) && c.category !== 'hotel');
+  const scheduledInDay = currentSlots.filter(s => s.card_id).map(s => {
+    const c = allCards.find(card => card.id === s.card_id);
+    return c ? c.title : 'Unknown';
+  });
+
+  // Build the slot descriptions for LLM — slot_type now carries the user's free-text request
+  const slotDescs = (requestedSlots || []).map(s => {
+    return `Slot ${s.slot_index}: "${s.slot_type}"`;
+  }).join('\n');
+
+  const unplacedList = unplacedCards.map(c => `${c.title} [${c.category}]${c.address ? ` @ ${c.address}` : ''}`).join('\n');
+
+  // Build anchor description for LLM
+  let anchorDesc = '';
+  if (anchor_lat && anchor_lng) {
+    // Find the card nearest to the anchor to describe it
+    const anchorCard = allCards.find(c => c.lat && c.lng &&
+      Math.abs(Number(c.lat) - anchor_lat) < 0.001 && Math.abs(Number(c.lng) - anchor_lng) < 0.001);
+    if (anchorCard) {
+      anchorDesc = `- The traveler will be coming from: ${anchorCard.title}${anchorCard.address ? ` (${anchorCard.address})` : ''}`;
+    } else if (hotel && Math.abs(Number(hotel.lat) - anchor_lat) < 0.01 && Math.abs(Number(hotel.lng) - anchor_lng) < 0.01) {
+      anchorDesc = `- The traveler will be starting from their hotel: ${hotel.title}${hotel.address ? ` (${hotel.address})` : ''}`;
+    }
+  } else if (hotel?.address) {
+    anchorDesc = `- The traveler will be starting from their hotel: ${hotel.title} (${hotel.address})`;
+  }
+
+  const prompt = `You are a travel advisor for ${hotelCity}. A traveler needs suggestions for empty time slots in their day.
+
+Context:
+- City: ${hotelCity}
+- Hotel: ${hotel?.title || 'Unknown'}${hotel?.address ? ` (${hotel.address})` : ''}
+- Date: ${day.date || `Day ${dayNum}`}
+- Already scheduled today: ${scheduledInDay.length ? scheduledInDay.join(', ') : 'Nothing yet'}
+- Travelers: ${settings.adults || 2} adults${(settings.children || []).length ? `, children ages: ${settings.children.join(', ')}` : ''}
+${anchorDesc}
+${unplacedList ? `\nThe traveler has these unplaced ideas they're considering — prefer these over new suggestions when they fit:\n${unplacedList}` : ''}
+
+Empty slots to fill:
+${slotDescs}
+
+IMPORTANT: All suggestions MUST be within 2-3km of the hotel or the previous activity listed above. Do not suggest places far away.
+For EACH slot, suggest exactly 5 options that match what the traveler asked for. The quoted text is their request — it could be a type of food, an activity, a vibe, anything. Match it.
+
+Return JSON (no markdown):
+{
+  "suggestions": {
+    "<slot_index>": [
+      { "title": "...", "category": "attraction|restaurant|experience", "description": "One sentence", "address": "Full address", "reasoning": "Why this fits" }
+    ]
+  }
+}`;
+
+  try {
+    const response = await callLLM([
+      { role: 'system', content: 'You are a knowledgeable travel advisor. Always respond with valid JSON only.' },
+      { role: 'user', content: prompt },
+    ], 4096);
+
+    let parsed;
+    try {
+      const jsonStr = response.replace(/```json?\s*/g, '').replace(/```/g, '').trim();
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      return res.status(500).json({ error: 'Failed to parse LLM response' });
+    }
+
+    // Enrich suggestions with lat/lng via Google Places, then filter by distance
+    const suggestions = parsed.suggestions || {};
+    const anchorForFilter = (anchor_lat && anchor_lng)
+      ? { lat: anchor_lat, lng: anchor_lng }
+      : (hotel?.lat && hotel?.lng ? { lat: Number(hotel.lat), lng: Number(hotel.lng) } : null);
+
+    for (const slotIdx of Object.keys(suggestions)) {
+      const opts = suggestions[slotIdx];
+      if (!Array.isArray(opts)) continue;
+      for (let i = 0; i < opts.length; i++) {
+        try {
+          const place = await enrichPlace(opts[i].title + ' ' + hotelCity);
+          if (place) {
+            opts[i].lat = place.lat;
+            opts[i].lng = place.lng;
+            if (place.image_url) opts[i].image_url = place.image_url;
+            if (place.address) opts[i].address = place.address;
+            if (place.rating) opts[i].rating = place.rating;
+            if (place.name) opts[i].place_name = place.name;
+          }
+        } catch { /* skip enrichment for this one */ }
+      }
+
+      // Filter out places too far from anchor and sort by distance
+      if (anchorForFilter) {
+        suggestions[slotIdx] = opts
+          .filter(o => {
+            if (!o.lat || !o.lng) return true; // keep un-geocoded ones at the end
+            const dist = haversineKm(anchorForFilter.lat, anchorForFilter.lng, o.lat, o.lng);
+            o._dist_km = Math.round(dist * 10) / 10;
+            return dist < 10; // drop anything >10km away
+          })
+          .sort((a, b) => (a._dist_km ?? 999) - (b._dist_km ?? 999));
+      }
+    }
+
+    res.json({ suggestions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- Airport-city mapping ---
@@ -1903,10 +2205,12 @@ Assign all activities to days. Return JSON.`;
 // Haversine distance in km
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const la1 = Number(lat1), lo1 = Number(lon1), la2 = Number(lat2), lo2 = Number(lon2);
+  if (isNaN(la1) || isNaN(lo1) || isNaN(la2) || isNaN(lo2)) return 999;
+  const dLat = (la2 - la1) * Math.PI / 180;
+  const dLon = (lo2 - lo1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.cos(la1 * Math.PI / 180) * Math.cos(la2 * Math.PI / 180) *
     Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

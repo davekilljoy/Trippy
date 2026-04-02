@@ -1,0 +1,122 @@
+.day-slot-editor {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.8rem;
+  margin-bottom: 0.3rem;
+}
+
+.day-slot-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.day-slot-num {
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+}
+
+.day-slot-date {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.day-slot-type {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+}
+
+.day-slot-body {
+  display: flex;
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.day-slot-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.day-slot-map {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.day-slot-map .day-map-wrap {
+  position: absolute;
+  inset: 0;
+  margin-bottom: 0;
+}
+
+.day-slot-map .day-map {
+  height: 100% !important;
+  min-height: 0;
+}
+
+/* Travel info between slots */
+.slot-travel-info {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0 0.15rem 26px;
+}
+
+.slot-travel-line {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.slot-travel-detail {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.day-slot-add {
+  margin-top: 0.5rem;
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  color: var(--muted);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  width: 100%;
+}
+
+.day-slot-add:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+@media (max-width: 900px) {
+  .day-slot-body {
+    flex-direction: column;
+  }
+  .day-slot-map {
+    width: 100%;
+  }
+}

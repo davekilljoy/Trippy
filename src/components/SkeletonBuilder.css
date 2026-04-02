@@ -1,0 +1,131 @@
+.skeleton-layout {
+  display: flex;
+  gap: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.skeleton-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.skeleton-sidebar-title {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 0.8rem;
+}
+
+.skeleton-sidebar-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-height: 60px;
+  padding: 0.3rem;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+
+.skeleton-sidebar-cards.drag-over {
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
+}
+
+.sidebar-drag-card {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  cursor: grab;
+  background: var(--card-bg);
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.sidebar-drag-card:hover {
+  border-color: var(--gold);
+}
+
+.sidebar-drag-card.placed {
+  opacity: 0.45;
+}
+
+.sidebar-drag-card.dragging {
+  opacity: 0.3;
+}
+
+.sidebar-drag-cat {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: var(--paper);
+  padding: 0.08rem 0.3rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-drag-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-drag-day {
+  font-size: 0.55rem;
+  color: var(--gold);
+  flex-shrink: 0;
+}
+
+/* Main skeleton area */
+.skeleton-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.2rem;
+}
+
+.skeleton-leg {
+  margin-bottom: 0.5rem;
+}
+
+/* Drag overlay preview */
+.drag-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--card-bg);
+  border: 2px solid var(--gold);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  pointer-events: none;
+}
+
+.drag-preview-cat {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: var(--paper);
+  padding: 0.08rem 0.3rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+.drag-preview-title {
+  font-family: var(--font-display);
+  font-style: italic;
+}

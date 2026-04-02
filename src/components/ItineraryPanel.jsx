@@ -1,13 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   createItinerary, fetchItineraries, fetchItinerary, deleteItinerary,
-  proposeItinerary, finalizeItinerary, loadDayRoutes,
+  proposeItinerary, finalizeItinerary, loadDayRoutes, generateSkeleton,
   fetchFlights, createFlight, updateFlight, deleteFlight,
 } from '../lib/api.js';
 import ProposalReview from './ProposalReview.jsx';
 import DayCard from './DayCard.jsx';
 import FlightCard from './FlightCard.jsx';
 import FlightForm from './FlightForm.jsx';
+import SkeletonBuilder from './SkeletonBuilder.jsx';
 import './ItineraryPanel.css';
 
 export default function ItineraryPanel({ approvedCards, pendingCards }) {
@@ -16,10 +17,12 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
   const [activeId, setActiveId] = useState(null);
   const [itinerary, setItinerary] = useState(null);
 
-  // UI phase: 'idle' | 'proposing' | 'reviewing' | 'finalizing' | 'complete'
+  // UI phase: 'idle' | 'proposing' | 'reviewing' | 'finalizing' | 'complete' | 'skeleton' | 'building'
   const [phase, setPhase] = useState('idle');
   const [status, setStatus] = useState('');
   const [error, setError] = useState(null);
+  const [showModePicker, setShowModePicker] = useState(false);
+  const modePickerRef = useRef(null);
 
   // Flights
   const [flights, setFlights] = useState([]);
@@ -47,7 +50,9 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
       const data = await fetchItinerary(id);
       setItinerary(data);
       // Determine phase from itinerary state
-      if (data.phase === 'final' && data.days?.length) {
+      if (data.mode === 'v2' && data.phase === 'skeleton') {
+        setPhase('skeleton');
+      } else if (data.phase === 'final' && data.days?.length) {
         setPhase('complete');
       } else if (data.phase === 'proposal' && data.proposal) {
         setPhase('reviewing');
@@ -70,6 +75,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
     setError(null);
     setStatus('Creating itinerary...');
     setPhase('proposing');
+    setShowModePicker(false);
 
     try {
       // Create itinerary record
@@ -98,6 +104,46 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
       setStatus('');
     }
   }, [approvedCards]);
+
+  // --- Build V2 manual itinerary ---
+  const handleBuildV2 = useCallback(async () => {
+    if (!approvedCards.length) return;
+    setError(null);
+    setStatus('Creating itinerary...');
+    setPhase('proposing');
+    setShowModePicker(false);
+
+    try {
+      const cardIds = approvedCards.map(c => c.id);
+      const created = await createItinerary(cardIds, null, 'v2');
+      setActiveId(created.id);
+
+      setStatus('Building skeleton...');
+      await generateSkeleton(created.id);
+
+      const data = await fetchItinerary(created.id);
+      setItinerary(data);
+      setPhase('skeleton');
+      await loadVersions();
+    } catch (err) {
+      setError(err.message);
+      setPhase('idle');
+    } finally {
+      setStatus('');
+    }
+  }, [approvedCards]);
+
+  // Close mode picker on outside click
+  useEffect(() => {
+    if (!showModePicker) return;
+    const handler = (e) => {
+      if (modePickerRef.current && !modePickerRef.current.contains(e.target)) {
+        setShowModePicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showModePicker]);
 
   // Per-day route data loaded sequentially: { [dayNumber]: { legs } }
   const [dayData, setDayData] = useState({});
@@ -185,13 +231,27 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
   return (
     <div className="itinerary-layout">
       <aside className="itinerary-sidebar">
-        <button
-          className="build-btn"
-          disabled={!approvedCards.length || phase === 'proposing' || phase === 'finalizing' || phase === 'loading'}
-          onClick={handleBuild}
-        >
-          {phase === 'proposing' || phase === 'finalizing' || phase === 'loading' ? 'Building...' : 'New Itinerary'}
-        </button>
+        <div className="build-btn-wrap" ref={modePickerRef}>
+          <button
+            className="build-btn"
+            disabled={!approvedCards.length || phase === 'proposing' || phase === 'finalizing' || phase === 'loading'}
+            onClick={() => setShowModePicker(prev => !prev)}
+          >
+            {phase === 'proposing' || phase === 'finalizing' || phase === 'loading' ? 'Building...' : 'New Itinerary'}
+          </button>
+          {showModePicker && (
+            <div className="mode-picker">
+              <button className="mode-option" onClick={handleBuild}>
+                <strong>Build with AI</strong>
+                <span>LLM plans everything</span>
+              </button>
+              <button className="mode-option" onClick={handleBuildV2}>
+                <strong>Build Manually</strong>
+                <span>Drag &amp; drop with AI assist</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Version selector */}
         {versions.length > 0 && (
@@ -205,6 +265,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
                   onClick={() => handleSelectVersion(v.id)}
                 >
                   <span className="version-name">{v.name}</span>
+                  {v.mode === 'v2' && <span className="version-mode">v2</span>}
                   <span className="version-phase">{v.phase}</span>
                   <button
                     className="version-delete"
@@ -293,6 +354,18 @@ export default function ItineraryPanel({ approvedCards, pendingCards }) {
           <div className="itinerary-placeholder">
             <p>Approve items on the Board, then click <strong>Build Itinerary</strong> to generate a day-by-day plan with maps, routes, and tips.</p>
           </div>
+        )}
+
+        {/* V2: Skeleton builder */}
+        {phase === 'skeleton' && itinerary?.mode === 'v2' && itinerary?.days?.length > 0 && (
+          <SkeletonBuilder
+            itinerary={itinerary}
+            approvedCards={approvedCards}
+            onUpdate={async () => {
+              const data = await fetchItinerary(activeId);
+              setItinerary(data);
+            }}
+          />
         )}
 
         {/* Phase 1: Reviewing proposal */}

@@ -88,12 +88,18 @@ function RoutePolylines({ legs, positions }) {
 // Auto-fit bounds to show all stops
 function FitBounds({ positions }) {
   const map = useMap();
+  const posKey = positions.map(p => `${p.lat},${p.lng}`).join('|');
   useEffect(() => {
     if (!map || positions.length === 0) return;
     const bounds = new google.maps.LatLngBounds();
     positions.forEach(p => bounds.extend(p));
     map.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
-  }, [map, positions]);
+    // Prevent over-zoom on single point
+    const listener = google.maps.event.addListenerOnce(map, 'idle', () => {
+      if (map.getZoom() > 15) map.setZoom(15);
+    });
+    return () => google.maps.event.removeListener(listener);
+  }, [map, posKey]);
   return null;
 }
 

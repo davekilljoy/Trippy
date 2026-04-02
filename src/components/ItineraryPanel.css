@@ -73,8 +73,68 @@
   color: var(--muted);
 }
 
-.build-btn {
+.build-btn-wrap {
+  position: relative;
   margin-bottom: 1rem;
+}
+
+.mode-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  margin-top: 0.25rem;
+  overflow: hidden;
+}
+
+.mode-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  transition: background 0.1s;
+}
+
+.mode-option:hover {
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
+}
+
+.mode-option + .mode-option {
+  border-top: 1px solid var(--border);
+}
+
+.mode-option strong {
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+
+.mode-option span {
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.version-mode {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+}
+
+.build-btn {
   font-family: var(--font-body);
   font-size: 0.8rem;
   text-transform: uppercase;
