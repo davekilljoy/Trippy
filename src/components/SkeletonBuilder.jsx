@@ -13,19 +13,18 @@ import { updateDaySlots, updateLegs } from '../lib/api.js';
 import DaySlotEditor from './DaySlotEditor.jsx';
 import LegHeader from './LegHeader.jsx';
 import SplitDivider from './SplitDivider.jsx';
+import SpotCard from './SpotCard.jsx';
 import './SkeletonBuilder.css';
 
-export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) {
+export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate, headerContent }) {
   const [days, setDays] = useState(itinerary.days || []);
-  const [activeCard, setActiveCard] = useState(null); // card being dragged
-  const [activeDragType, setActiveDragType] = useState(null); // 'sidebar' | 'slot'
-  // Seed extra cards from itinerary.cards (server returns slot-referenced cards too)
+  const [activeCard, setActiveCard] = useState(null);
+  const [activeDragType, setActiveDragType] = useState(null);
   const [extraCards, setExtraCards] = useState(() => {
     const approvedIds = new Set((approvedCards || []).map(c => c.id));
     return (itinerary.cards || []).filter(c => !approvedIds.has(c.id));
   });
 
-  // Merge approved + itinerary cards so slots can always resolve card data
   const allCards = useMemo(() => {
     const map = new Map();
     for (const c of (approvedCards || [])) map.set(c.id, c);
@@ -39,9 +38,8 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
     [allCards]
   );
 
-  // Track which cards are placed in slots
   const placedCardMap = useMemo(() => {
-    const map = {}; // cardId -> dayNum
+    const map = {};
     for (const day of days) {
       for (const slot of (day.stops || [])) {
         if (slot.card_id) map[slot.card_id] = day.day_number;
@@ -50,7 +48,6 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
     return map;
   }, [days]);
 
-  // Group days into legs by consecutive hotel_id
   const legs = useMemo(() => {
     const result = [];
     let current = null;
@@ -65,7 +62,6 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
     return result;
   }, [days]);
 
-  // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -94,7 +90,7 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
     const activeData = active.data.current;
     const overData = over.data.current;
 
-    // --- Sidebar card dropped onto a slot ---
+    // Sidebar card → slot
     if (activeData?.type === 'sidebar-card' && overData?.type === 'slot') {
       const { dayNum, slotId } = overData;
       const card = activeData.card;
@@ -107,7 +103,6 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
         return { ...d, stops: newStops };
       }));
 
-      // Persist
       const day = days.find(d => d.day_number === dayNum);
       if (day) {
         const newSlots = (day.stops || []).map(s =>
@@ -117,66 +112,70 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
       }
     }
 
-    // --- Slot card dropped onto another slot ---
+    // Slot card → slot (swap)
     if (activeData?.type === 'slot-card' && overData?.type === 'slot') {
       const srcDay = activeData.dayNum;
       const srcSlotId = activeData.slotId;
       const dstDay = overData.dayNum;
       const dstSlotId = overData.slotId;
-      const card = activeData.card;
+      const srcCard = activeData.card;
 
       if (srcDay === dstDay && srcSlotId === dstSlotId) return;
 
-      setDays(prev => {
-        const updated = prev.map(d => {
+      const dstDayObj = days.find(d => d.day_number === dstDay);
+      const dstSlot = (dstDayObj?.stops || []).find(s => s.slot_id === dstSlotId);
+      const dstCardId = dstSlot?.card_id || null;
+
+      if (srcDay === dstDay) {
+        setDays(prev => prev.map(d => {
+          if (d.day_number !== srcDay) return d;
+          const newStops = (d.stops || []).map(s => {
+            if (s.slot_id === srcSlotId) return { ...s, card_id: dstCardId };
+            if (s.slot_id === dstSlotId) return { ...s, card_id: srcCard.id };
+            return s;
+          });
+          return { ...d, stops: newStops };
+        }));
+        const dayObj = days.find(d => d.day_number === srcDay);
+        if (dayObj) {
+          const swapped = (dayObj.stops || []).map(s => {
+            if (s.slot_id === srcSlotId) return { ...s, card_id: dstCardId };
+            if (s.slot_id === dstSlotId) return { ...s, card_id: srcCard.id };
+            return s;
+          });
+          await updateDaySlots(itinerary.id, srcDay, swapped);
+        }
+      } else {
+        setDays(prev => prev.map(d => {
           if (d.day_number === srcDay) {
-            const newStops = (d.stops || []).map(s =>
-              s.slot_id === srcSlotId ? { ...s, card_id: null } : s
-            );
-            // If same day, also fill the target
-            if (srcDay === dstDay) {
-              return { ...d, stops: newStops.map(s =>
-                s.slot_id === dstSlotId ? { ...s, card_id: card.id } : s
-              )};
-            }
-            return { ...d, stops: newStops };
+            return { ...d, stops: (d.stops || []).map(s =>
+              s.slot_id === srcSlotId ? { ...s, card_id: dstCardId } : s
+            )};
           }
-          if (d.day_number === dstDay && srcDay !== dstDay) {
-            const newStops = (d.stops || []).map(s =>
-              s.slot_id === dstSlotId ? { ...s, card_id: card.id } : s
-            );
-            return { ...d, stops: newStops };
+          if (d.day_number === dstDay) {
+            return { ...d, stops: (d.stops || []).map(s =>
+              s.slot_id === dstSlotId ? { ...s, card_id: srcCard.id } : s
+            )};
           }
           return d;
-        });
-        return updated;
-      });
-
-      // Persist
-      const srcDayObj = days.find(d => d.day_number === srcDay);
-      const dstDayObj = days.find(d => d.day_number === dstDay);
-      if (srcDayObj) {
-        const srcSlots = (srcDayObj.stops || []).map(s =>
-          s.slot_id === srcSlotId ? { ...s, card_id: null } : s
-        );
-        if (srcDay === dstDay) {
-          const combined = srcSlots.map(s =>
-            s.slot_id === dstSlotId ? { ...s, card_id: card.id } : s
+        }));
+        const srcDayObj = days.find(d => d.day_number === srcDay);
+        if (srcDayObj) {
+          const srcSlots = (srcDayObj.stops || []).map(s =>
+            s.slot_id === srcSlotId ? { ...s, card_id: dstCardId } : s
           );
-          await updateDaySlots(itinerary.id, srcDay, combined);
-        } else {
           await updateDaySlots(itinerary.id, srcDay, srcSlots);
-          if (dstDayObj) {
-            const dstSlots = (dstDayObj.stops || []).map(s =>
-              s.slot_id === dstSlotId ? { ...s, card_id: card.id } : s
-            );
-            await updateDaySlots(itinerary.id, dstDay, dstSlots);
-          }
+        }
+        if (dstDayObj) {
+          const dstSlots = (dstDayObj.stops || []).map(s =>
+            s.slot_id === dstSlotId ? { ...s, card_id: srcCard.id } : s
+          );
+          await updateDaySlots(itinerary.id, dstDay, dstSlots);
         }
       }
     }
 
-    // --- Card dropped on sidebar (unassign) ---
+    // Slot card → sidebar (unassign)
     if (activeData?.type === 'slot-card' && overData?.type === 'sidebar-drop') {
       const srcDay = activeData.dayNum;
       const srcSlotId = activeData.slotId;
@@ -199,9 +198,8 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
     }
   }, [days, itinerary.id]);
 
-  // --- Select card from dropdown into a slot ---
+  // Select card from dropdown into a slot
   const handleSelect = useCallback(async (dayNum, slotId, card) => {
-    // If this card isn't in approvedCards, stash it so slots can render it
     if (!(approvedCards || []).some(c => c.id === card.id)) {
       setExtraCards(prev => prev.some(c => c.id === card.id) ? prev : [...prev, card]);
     }
@@ -221,24 +219,20 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
     }
   }, [days, itinerary.id, approvedCards]);
 
-  // --- Leg splitting ---
   const handleSplit = useCallback(async (afterDayNum) => {
     const newLegs = [];
     let currentHotel = days[0]?.hotel_id;
     let start = 1;
-
     for (const day of days) {
       if (day.day_number === afterDayNum + 1) {
-        // This is the split point — new leg starts with null hotel
         newLegs.push({ startDay: start, endDay: afterDayNum, hotel_id: currentHotel });
         start = afterDayNum + 1;
-        currentHotel = null; // new leg needs hotel assignment
+        currentHotel = null;
       }
       if (day.day_number === days[days.length - 1].day_number) {
         newLegs.push({ startDay: start, endDay: day.day_number, hotel_id: currentHotel });
       }
     }
-
     const result = await updateLegs(itinerary.id, newLegs);
     if (result.days) {
       setDays(result.days.map(d => ({
@@ -248,16 +242,13 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
     }
   }, [days, itinerary.id]);
 
-  // --- Hotel change on a leg ---
   const handleHotelChange = useCallback(async (legDays, hotelId) => {
     const newLegs = [];
     let currentHotel = null;
     let start = null;
-
     for (const day of days) {
       const isInLeg = legDays.some(ld => ld.day_number === day.day_number);
       const hid = isInLeg ? hotelId : day.hotel_id;
-
       if (currentHotel !== hid || start === null) {
         if (start !== null) {
           newLegs.push({ startDay: start, endDay: day.day_number - 1, hotel_id: currentHotel });
@@ -269,7 +260,6 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
     if (start !== null) {
       newLegs.push({ startDay: start, endDay: days[days.length - 1].day_number, hotel_id: currentHotel });
     }
-
     const result = await updateLegs(itinerary.id, newLegs);
     if (result.days) {
       setDays(result.days.map(d => ({
@@ -279,25 +269,17 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
     }
   }, [days, itinerary.id]);
 
-  // --- Add slot to a day ---
   const handleAddSlot = useCallback(async (dayNum) => {
     const day = days.find(d => d.day_number === dayNum);
     if (!day) return;
     const slots = [...(day.stops || [])];
-    const newSlot = {
-      slot_id: Math.random().toString(36).slice(2, 10),
-      slot_type: 'afternoon',
-      card_id: null,
-      order: slots.length,
-    };
-    slots.push(newSlot);
+    slots.push({ slot_id: Math.random().toString(36).slice(2, 10), card_id: null, order: slots.length });
     setDays(prev => prev.map(d =>
       d.day_number === dayNum ? { ...d, stops: slots } : d
     ));
     await updateDaySlots(itinerary.id, dayNum, slots);
   }, [days, itinerary.id]);
 
-  // --- Remove slot from a day ---
   const handleRemoveSlot = useCallback(async (dayNum, slotId) => {
     const day = days.find(d => d.day_number === dayNum);
     if (!day) return;
@@ -308,7 +290,6 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
     await updateDaySlots(itinerary.id, dayNum, slots);
   }, [days, itinerary.id]);
 
-
   return (
     <DndContext
       sensors={sensors}
@@ -317,20 +298,25 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
       onDragEnd={handleDragEnd}
     >
       <div className="skeleton-layout">
-        <div className="skeleton-sidebar">
-          <h3 className="skeleton-sidebar-title">Your Ideas</h3>
-          <SidebarDropZone>
-            {(approvedCards || []).filter(c => c.category !== 'hotel').map(card => (
-              <SidebarCard
-                key={card.id}
-                card={card}
-                placedDay={placedCardMap[card.id]}
-              />
-            ))}
-          </SidebarDropZone>
-        </div>
+        <aside className="skeleton-sidebar">
+          {headerContent}
+          <div className="sidebar-section">
+            <h3 className="sidebar-heading">
+              Your Ideas <span className="count-badge">{(approvedCards || []).filter(c => c.category !== 'hotel').length}</span>
+            </h3>
+            <SidebarDropZone>
+              {(approvedCards || []).filter(c => c.category !== 'hotel').map(card => (
+                <SidebarCard
+                  key={card.id}
+                  card={card}
+                  placedDay={placedCardMap[card.id]}
+                />
+              ))}
+            </SidebarDropZone>
+          </div>
+        </aside>
 
-        <div className="skeleton-main">
+        <main className="skeleton-main">
           {legs.map((leg, legIdx) => {
             const hotel = hotels.find(h => h.id === leg.hotel_id);
             return (
@@ -354,7 +340,6 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
                       onRemoveSlot={(slotId) => handleRemoveSlot(day.day_number, slotId)}
                       onSelect={handleSelect}
                     />
-                    {/* Split divider between days within a leg */}
                     {dayIdx < leg.days.length - 1 && (
                       <SplitDivider
                         type="within-leg"
@@ -363,54 +348,37 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate }) 
                     )}
                   </div>
                 ))}
-                {/* Divider between legs */}
                 {legIdx < legs.length - 1 && (
                   <SplitDivider type="between-legs" />
                 )}
               </div>
             );
           })}
-        </div>
+        </main>
       </div>
 
-      {/* Drag overlay */}
       <DragOverlay>
         {activeCard && (
           <div className="drag-preview">
-            <span className="drag-preview-cat">{activeCard.category}</span>
-            <span className="drag-preview-title">{activeCard.title}</span>
+            <SpotCard card={activeCard} variant="compact" />
           </div>
         )}
       </DragOverlay>
-
     </DndContext>
   );
 }
 
-// --- Sidebar drop zone ---
+// Sidebar drop zone (for unassigning cards)
 function SidebarDropZone({ children }) {
   const { setNodeRef, isOver } = useDroppable({ id: 'sidebar-drop', data: { type: 'sidebar-drop' } });
   return (
-    <div ref={setNodeRef} className={`skeleton-sidebar-cards ${isOver ? 'drag-over' : ''}`}>
+    <div ref={setNodeRef} className={`sidebar-cards ${isOver ? 'drag-over' : ''}`}>
       {children}
     </div>
   );
 }
 
-// --- Haversine helper ---
-function haversine(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const la1 = Number(lat1), lo1 = Number(lng1), la2 = Number(lat2), lo2 = Number(lng2);
-  if (isNaN(la1) || isNaN(lo1) || isNaN(la2) || isNaN(lo2)) return 999;
-  const dLat = (la2 - la1) * Math.PI / 180;
-  const dLng = (lo2 - lo1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(la1 * Math.PI / 180) * Math.cos(la2 * Math.PI / 180) *
-    Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// --- Sidebar draggable card ---
+// Sidebar draggable card
 function SidebarCard({ card, placedDay }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-${card.id}`,
@@ -420,13 +388,15 @@ function SidebarCard({ card, placedDay }) {
   return (
     <div
       ref={setNodeRef}
-      className={`sidebar-drag-card ${placedDay ? 'placed' : ''} ${isDragging ? 'dragging' : ''}`}
+      className={`sidebar-drag-card ${isDragging ? 'dragging' : ''}`}
       {...listeners}
       {...attributes}
     >
-      <span className="sidebar-drag-cat">{card.category}</span>
-      <span className="sidebar-drag-title">{card.title}</span>
-      {placedDay && <span className="sidebar-drag-day">Day {placedDay}</span>}
+      <SpotCard
+        card={card}
+        variant="compact"
+        placed={placedDay || false}
+      />
     </div>
   );
 }

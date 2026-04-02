@@ -29,7 +29,23 @@ function decodePolyline(encoded) {
   return points;
 }
 
-// Draw polylines on the map — uses encoded polylines if available, falls back to straight lines
+// Flatten legs into individual route objects for polyline drawing
+function flattenRoutes(legs) {
+  const routes = [];
+  if (!legs) return routes;
+  for (const leg of legs) {
+    // New format: leg.routes is an array of route options
+    if (leg.routes) {
+      for (const r of leg.routes) routes.push(r);
+    } else if (leg.polyline) {
+      // Old format: leg itself is a route
+      routes.push(leg);
+    }
+  }
+  return routes;
+}
+
+// Draw polylines on the map — walking routes solid, transit/driving dashed
 function RoutePolylines({ legs, positions }) {
   const map = useMap();
   const polylinesRef = useRef([]);
@@ -37,40 +53,52 @@ function RoutePolylines({ legs, positions }) {
   useEffect(() => {
     if (!map) return;
 
-    // Clear old polylines
     polylinesRef.current.forEach(p => p.setMap(null));
     polylinesRef.current = [];
 
-    const hasEncodedPolylines = legs?.some(l => l.polyline);
+    const allRoutes = flattenRoutes(legs);
+    const hasPolylines = allRoutes.some(r => r.polyline);
 
-    if (hasEncodedPolylines) {
-      for (const leg of legs) {
-        if (!leg.polyline) continue;
-        const path = decodePolyline(leg.polyline);
+    if (hasPolylines) {
+      for (const route of allRoutes) {
+        if (!route.polyline) continue;
+        const path = decodePolyline(route.polyline);
         if (!path.length) continue;
 
-        const polyline = new google.maps.Polyline({
-          path,
-          strokeColor: '#12100e',
-          strokeOpacity: 0.6,
-          strokeWeight: 3,
-          map,
-        });
+        const isWalking = route.mode === 'walking';
+        const polyline = isWalking
+          ? new google.maps.Polyline({
+              path,
+              strokeColor: '#12100e',
+              strokeOpacity: 0.6,
+              strokeWeight: 3,
+              map,
+            })
+          : new google.maps.Polyline({
+              path,
+              strokeColor: '#9a7c3f',
+              strokeOpacity: 0,
+              strokeWeight: 2,
+              icons: [{
+                icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.5, scale: 3 },
+                offset: '0',
+                repeat: '12px',
+              }],
+              map,
+            });
         polylinesRef.current.push(polyline);
       }
     } else if (positions?.length > 1) {
-      // Fallback: draw dashed straight lines between stops
       const polyline = new google.maps.Polyline({
         path: positions,
         strokeColor: '#12100e',
-        strokeOpacity: 0.4,
+        strokeOpacity: 0,
         strokeWeight: 2,
         icons: [{
           icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.4, scale: 3 },
           offset: '0',
           repeat: '12px',
         }],
-        strokeOpacity: 0,
         map,
       });
       polylinesRef.current.push(polyline);
@@ -216,23 +244,6 @@ export default function DayMap({ stops, legs, hotel, waypoints = [] }) {
         ))}
       </Map>
 
-      {legs && legs.length > 0 && (
-        <div className="day-legs">
-          {legs.map((leg, i) => {
-            const hasHotel = !!hotel;
-            const fromLabel = hasHotel && i === 0 ? 'H' : hasHotel ? i : i + 1;
-            const toLabel = hasHotel && i === legs.length - 1 ? 'H' : hasHotel ? i + 1 : i + 2;
-            return (
-              <div key={i} className={`day-leg ${leg.mode === 'transit' ? 'transit' : ''}`}>
-                <span className="leg-num">{fromLabel} → {toLabel}</span>
-                <span className="leg-duration">{leg.duration}</span>
-                {leg.distance && <span className="leg-distance">{leg.distance}</span>}
-                {leg.summary && <span className="leg-summary">{leg.summary}</span>}
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

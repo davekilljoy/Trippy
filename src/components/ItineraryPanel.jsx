@@ -7,6 +7,7 @@ import ProposalReview from './ProposalReview.jsx';
 import DayCard from './DayCard.jsx';
 import FlightCard from './FlightCard.jsx';
 import SkeletonBuilder from './SkeletonBuilder.jsx';
+import SpotCard from './SpotCard.jsx';
 import './ItineraryPanel.css';
 
 export default function ItineraryPanel({ approvedCards, pendingCards, flights, onEditFlight, onDeleteFlight }) {
@@ -200,94 +201,95 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
   const outboundFlight = flights.find(f => f.direction === 'outbound');
   const returnFlight = flights.find(f => f.direction === 'return');
 
+  // Shared sidebar header: build button + versions
+  const sidebarHeader = (
+    <>
+      <div className="build-btn-wrap" ref={modePickerRef}>
+        <button
+          className="build-btn"
+          disabled={!approvedCards.length || phase === 'proposing' || phase === 'finalizing' || phase === 'loading'}
+          onClick={() => setShowModePicker(prev => !prev)}
+        >
+          {phase === 'proposing' || phase === 'finalizing' || phase === 'loading' ? 'Building...' : 'New Itinerary'}
+        </button>
+        {showModePicker && (
+          <div className="mode-picker">
+            <button className="mode-option" onClick={handleBuild}>
+              <strong>Build with AI</strong>
+              <span>LLM plans everything</span>
+            </button>
+            <button className="mode-option" onClick={handleBuildV2}>
+              <strong>Build Manually</strong>
+              <span>Drag &amp; drop with AI assist</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {versions.length > 0 && (
+        <div className="sidebar-section">
+          <h3 className="sidebar-heading">Versions</h3>
+          <div className="version-list">
+            {versions.map(v => (
+              <div
+                key={v.id}
+                className={`version-item ${v.id === activeId ? 'active' : ''}`}
+                onClick={() => handleSelectVersion(v.id)}
+              >
+                <span className="version-name">{v.name}</span>
+                {v.mode === 'v2' && <span className="version-mode">v2</span>}
+                <span className="version-phase">{v.phase}</span>
+                <button
+                  className="version-delete"
+                  onClick={e => { e.stopPropagation(); handleDeleteVersion(v.id); }}
+                >×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  // V2 skeleton: SkeletonBuilder owns the full layout (sidebar + main) inside DndContext
+  if (phase === 'skeleton' && itinerary?.mode === 'v2' && itinerary?.days?.length > 0) {
+    return (
+      <SkeletonBuilder
+        itinerary={itinerary}
+        approvedCards={approvedCards}
+        headerContent={sidebarHeader}
+        onUpdate={async () => {
+          const data = await fetchItinerary(activeId);
+          setItinerary(data);
+        }}
+      />
+    );
+  }
+
+  // All other phases: standard layout with sidebar + main
   return (
     <div className="itinerary-layout">
       <aside className="itinerary-sidebar">
-        <div className="build-btn-wrap" ref={modePickerRef}>
-          <button
-            className="build-btn"
-            disabled={!approvedCards.length || phase === 'proposing' || phase === 'finalizing' || phase === 'loading'}
-            onClick={() => setShowModePicker(prev => !prev)}
-          >
-            {phase === 'proposing' || phase === 'finalizing' || phase === 'loading' ? 'Building...' : 'New Itinerary'}
-          </button>
-          {showModePicker && (
-            <div className="mode-picker">
-              <button className="mode-option" onClick={handleBuild}>
-                <strong>Build with AI</strong>
-                <span>LLM plans everything</span>
-              </button>
-              <button className="mode-option" onClick={handleBuildV2}>
-                <strong>Build Manually</strong>
-                <span>Drag &amp; drop with AI assist</span>
-              </button>
-            </div>
-          )}
-        </div>
+        {sidebarHeader}
 
-        {/* Version selector */}
-        {versions.length > 0 && (
-          <div className="sidebar-section">
-            <h3 className="sidebar-heading">Versions</h3>
-            <div className="version-list">
-              {versions.map(v => (
-                <div
-                  key={v.id}
-                  className={`version-item ${v.id === activeId ? 'active' : ''}`}
-                  onClick={() => handleSelectVersion(v.id)}
-                >
-                  <span className="version-name">{v.name}</span>
-                  {v.mode === 'v2' && <span className="version-mode">v2</span>}
-                  <span className="version-phase">{v.phase}</span>
-                  <button
-                    className="version-delete"
-                    onClick={e => { e.stopPropagation(); handleDeleteVersion(v.id); }}
-                  >×</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Approved cards */}
         <div className="sidebar-section">
           <h3 className="sidebar-heading">
-            Approved <span className="count-badge">{approvedCards.length}</span>
+            Approved <span className="count-badge">{approvedCards.filter(c => c.category !== 'hotel').length}</span>
           </h3>
-          {approvedCards.length === 0 ? (
+          {approvedCards.filter(c => c.category !== 'hotel').length === 0 ? (
             <p className="sidebar-empty">No items approved by both yet.</p>
           ) : (
-            <ul className="sidebar-list">
-              {approvedCards.map(c => (
-                <li key={c.id} className="sidebar-item approved">
-                  <span className="sidebar-cat">{c.category}</span>
-                  {c.title}
-                  {(!c.lat || !c.lng) && <span className="sidebar-no-geo" title="No location data">?</span>}
-                </li>
+            <div className="sidebar-cards">
+              {approvedCards.filter(c => c.category !== 'hotel').map(c => (
+                <SpotCard
+                  key={c.id}
+                  card={c}
+                  variant="compact"
+                />
               ))}
-            </ul>
+            </div>
           )}
         </div>
-
-        {/* Pending cards - hidden on itinerary tab
-        <div className="sidebar-section">
-          <h3 className="sidebar-heading">
-            Pending <span className="count-badge">{pendingCards.length}</span>
-          </h3>
-          {pendingCards.length === 0 ? (
-            <p className="sidebar-empty">All items are approved!</p>
-          ) : (
-            <ul className="sidebar-list">
-              {pendingCards.map(c => (
-                <li key={c.id} className="sidebar-item">
-                  <span className="sidebar-cat">{c.category}</span>
-                  {c.title}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div> */}
-
       </aside>
 
       <main className="itinerary-main">
@@ -300,26 +302,12 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
           </div>
         )}
 
-        {/* Idle state */}
         {phase === 'idle' && !itinerary && (
           <div className="itinerary-placeholder">
             <p>Approve items on the Board, then click <strong>Build Itinerary</strong> to generate a day-by-day plan with maps, routes, and tips.</p>
           </div>
         )}
 
-        {/* V2: Skeleton builder */}
-        {phase === 'skeleton' && itinerary?.mode === 'v2' && itinerary?.days?.length > 0 && (
-          <SkeletonBuilder
-            itinerary={itinerary}
-            approvedCards={approvedCards}
-            onUpdate={async () => {
-              const data = await fetchItinerary(activeId);
-              setItinerary(data);
-            }}
-          />
-        )}
-
-        {/* Phase 1: Reviewing proposal */}
         {phase === 'reviewing' && itinerary?.proposal && (
           <ProposalReview
             proposal={itinerary.proposal}
@@ -328,10 +316,8 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
           />
         )}
 
-        {/* Day-by-day view: loading sequentially or complete */}
         {(phase === 'loading' || phase === 'complete') && itinerary?.days?.length > 0 && (
           <div className="day-plans">
-            {/* Outbound flight */}
             {outboundFlight && (
               <FlightCard
                 flight={outboundFlight}
@@ -340,12 +326,9 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
               />
             )}
 
-            {/* Day cards — show each day as it loads */}
             {itinerary.days.map(day => {
               const live = dayData[day.day_number];
-              // Don't render days that haven't started loading yet
               if (phase === 'loading' && !live) return null;
-
               return (
                 <DayCard
                   key={day.id}
@@ -357,7 +340,6 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
               );
             })}
 
-            {/* Loading indicator for next day */}
             {phase === 'loading' && loadingDay && (
               <div className="itinerary-status">
                 <div className="status-spinner" />
@@ -365,7 +347,6 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
               </div>
             )}
 
-            {/* Return flight */}
             {returnFlight && phase === 'complete' && (
               <FlightCard
                 flight={returnFlight}
@@ -376,7 +357,6 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
           </div>
         )}
       </main>
-
     </div>
   );
 }

@@ -100,6 +100,7 @@ try { db.exec('ALTER TABLE cards ADD COLUMN place_id TEXT'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN opening_hours TEXT'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN price_level INTEGER'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN business_status TEXT'); } catch {}
+try { db.exec('ALTER TABLE cards ADD COLUMN rating REAL'); } catch {}
 try { db.exec('ALTER TABLE itineraries ADD COLUMN mode TEXT NOT NULL DEFAULT \'v1\''); } catch {}
 
 
@@ -152,12 +153,16 @@ app.get('/api/cards', (req, res) => {
 });
 
 app.post('/api/cards', (req, res) => {
-  const { title, description, address, lat, lng, image_url, link_url, category, timing, david_note, jen_note, david_approved, jen_approved } = req.body;
+  const { title, description, address, lat, lng, image_url, link_url, category, timing,
+    david_note, jen_note, david_approved, jen_approved,
+    rating, opening_hours, price_level, place_id } = req.body;
   if (!title) return res.status(400).json({ error: 'title is required' });
 
   const stmt = db.prepare(`
-    INSERT INTO cards (title, description, address, lat, lng, image_url, link_url, category, timing, david_note, jen_note, david_approved, jen_approved)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO cards (title, description, address, lat, lng, image_url, link_url, category, timing,
+      david_note, jen_note, david_approved, jen_approved,
+      rating, opening_hours, price_level, place_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const info = stmt.run(
     title,
@@ -172,12 +177,16 @@ app.post('/api/cards', (req, res) => {
     david_note || null,
     jen_note || null,
     david_approved ? 1 : 0,
-    jen_approved ? 1 : 0
+    jen_approved ? 1 : 0,
+    rating || null,
+    opening_hours || null,
+    price_level ?? null,
+    place_id || null
   );
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
   // Geocode + enrich with Google Places data in background (skip if lat/lng already provided)
   if (!lat || !lng) geocodeCard(card).catch(() => {});
-  enrichCardPlaceData(card).catch(() => {});
+  if (!place_id) enrichCardPlaceData(card).catch(() => {});
   res.status(201).json(card);
 });
 
@@ -261,8 +270,13 @@ async function geocodeCard(card) {
 async function enrichCardPlaceData(card) {
   if (card.place_id && card.opening_hours) return; // Already enriched
   try {
-    const query = `${card.title}${card.address ? ' ' + card.address : ' Japan'}`;
-    const place = await searchPlace(query);
+    let region = '';
+    try {
+      const row = db.prepare("SELECT value FROM settings WHERE key = 'destination'").get();
+      region = row ? JSON.parse(row.value) : '';
+    } catch {}
+    const query = `${card.title}${card.address ? ' ' + card.address : (region ? ' ' + region : '')}`;
+    const place = await searchPlace(query, region);
     if (!place?.place_id) return;
 
     const details = await placeDetails(place.place_id);
@@ -295,7 +309,6 @@ async function fetchDirections(origin, destination) {
     const params = new URLSearchParams({
       origin, destination, mode,
       key: GOOGLE_MAPS_API_KEY,
-      region: 'jp',
     });
     const res = await fetch(`https://maps.googleapis.com/maps/api/directions/json?${params}`);
     if (!res.ok) return null;
@@ -338,7 +351,6 @@ async function getDirections(origins, destinations, mode = 'transit') {
       destinations: destinations.join('|'),
       mode,
       key: GOOGLE_MAPS_API_KEY,
-      region: 'jp',
     });
     const res = await fetch(`https://maps.googleapis.com/maps/api/distancematrix/json?${params}`);
     if (!res.ok) return null;
@@ -465,15 +477,23 @@ function unwrapIdeas(val) {
 
 // --- Google Places search + photos ---
 
-async function searchPlace(query) {
+async function searchPlace(query, region) {
   if (!GOOGLE_MAPS_API_KEY) return null;
   try {
+    // Location bias: prefer coords for precision, fall back to broad rectangle
+    let locationBias = 'rectangle:24.0,122.0|46.0,154.0';
+    if (region) {
+      const coordMatch = region.match?.(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+      if (coordMatch) {
+        locationBias = `circle:20000@${coordMatch[1]},${coordMatch[2]}`;
+      }
+    }
     const params = new URLSearchParams({
       input: query,
       inputtype: 'textquery',
       fields: 'place_id,name,formatted_address,geometry,photos,types,website,rating',
       key: GOOGLE_MAPS_API_KEY,
-      locationbias: 'rectangle:24.0,122.0|46.0,154.0', // Japan bounding box
+      locationbias: locationBias,
     });
     const res = await fetch(`https://maps.googleapis.com/maps/api/place/findplacefromtext/json?${params}`);
     if (!res.ok) return null;
@@ -512,7 +532,6 @@ app.get('/api/places/search', async (req, res) => {
     const acParams = new URLSearchParams({
       input: q,
       key: GOOGLE_MAPS_API_KEY,
-      components: 'country:jp',
       language: 'en',
     });
     const acRes = await fetch(`https://maps.googleapis.com/maps/api/place/autocomplete/json?${acParams}`);
@@ -588,14 +607,45 @@ app.get('/api/places/photo', async (req, res) => {
 });
 
 // Enrich a place by name — returns full details for LLM context
-async function enrichPlace(title) {
-  const place = await searchPlace(`${title} Japan`);
+// region: optional location hint — can be "lat,lng" coords or city name. Defaults to settings.destination.
+async function enrichPlace(title, region) {
+  if (!region) {
+    try {
+      const row = db.prepare("SELECT value FROM settings WHERE key = 'destination'").get();
+      region = row ? JSON.parse(row.value) : '';
+    } catch { region = ''; }
+  }
+  const isCoords = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(region);
+  let searchCity = '';
+  if (isCoords) {
+    const [lat, lng] = region.split(',').map(Number);
+    searchCity = nearestCity(lat, lng);
+  } else if (region) {
+    searchCity = region;
+  }
+
+  // Try multiple search variants — LLM names are often too verbose for Google
+  const cleanTitle = title.replace(/\s*\(.*?\)\s*/g, '').trim(); // strip parenthetical
+  const shortTitle = cleanTitle.split(/\s+/).slice(0, 3).join(' '); // first 3 words
+  const queries = [
+    `${title}${searchCity ? ' ' + searchCity : ''}`,
+    cleanTitle !== title ? `${cleanTitle}${searchCity ? ' ' + searchCity : ''}` : null,
+    shortTitle !== cleanTitle ? `${shortTitle}${searchCity ? ' ' + searchCity : ''}` : null,
+  ].filter(Boolean);
+
+  let place = null;
+  for (const q of queries) {
+    place = await searchPlace(q, region);
+    if (place) break;
+  }
   if (!place) return null;
+
   const detail = await placeDetails(place.place_id);
   if (!detail) return null;
   const photo = detail.photos?.[0]?.photo_reference;
   return {
     name: detail.name,
+    place_id: detail.place_id || place.place_id,
     address: detail.formatted_address,
     lat: detail.geometry?.location?.lat,
     lng: detail.geometry?.location?.lng,
@@ -604,6 +654,8 @@ async function enrichPlace(title) {
     rating: detail.rating,
     summary: detail.editorial_summary?.overview || '',
     image_url: photo ? `/api/places/photo?ref=${photo}` : '',
+    opening_hours: detail.opening_hours ? JSON.stringify(detail.opening_hours) : null,
+    price_level: detail.price_level ?? null,
   };
 }
 
@@ -1173,42 +1225,18 @@ app.delete('/api/itineraries/:id', (req, res) => {
 function generateSlotTemplate(dayType, flights) {
   const id = () => Math.random().toString(36).slice(2, 10);
   const returnFlight = flights?.find(f => f.direction === 'return');
+  const makeSlots = (count) =>
+    Array.from({ length: count }, (_, i) => ({ slot_id: id(), card_id: null, order: i }));
 
   switch (dayType) {
-    case 'arrival':
-      return [
-        { slot_id: id(), slot_type: 'afternoon', card_id: null, order: 0 },
-        { slot_id: id(), slot_type: 'evening', card_id: null, order: 1 },
-      ];
-    case 'jet_lag':
-      return [
-        { slot_id: id(), slot_type: 'morning', card_id: null, order: 0 },
-        { slot_id: id(), slot_type: 'midday', card_id: null, order: 1 },
-        { slot_id: id(), slot_type: 'afternoon', card_id: null, order: 2 },
-        { slot_id: id(), slot_type: 'evening', card_id: null, order: 3 },
-      ];
+    case 'arrival':      return makeSlots(2);
+    case 'jet_lag':      return makeSlots(4);
     case 'departure': {
       const depHour = returnFlight?.departure_time ? parseInt(returnFlight.departure_time.split(':')[0]) : 0;
-      if (depHour >= 15) {
-        return [
-          { slot_id: id(), slot_type: 'morning', card_id: null, order: 0 },
-        ];
-      }
-      return [];
+      return depHour >= 15 ? makeSlots(1) : [];
     }
-    case 'travel':
-      return [
-        { slot_id: id(), slot_type: 'morning', card_id: null, order: 0 },
-        { slot_id: id(), slot_type: 'midday', card_id: null, order: 1 },
-      ];
-    default: // normal
-      return [
-        { slot_id: id(), slot_type: 'morning', card_id: null, order: 0 },
-        { slot_id: id(), slot_type: 'midday', card_id: null, order: 1 },
-        { slot_id: id(), slot_type: 'afternoon', card_id: null, order: 2 },
-        { slot_id: id(), slot_type: 'evening', card_id: null, order: 3 },
-        { slot_id: id(), slot_type: 'after_hours', card_id: null, order: 4 },
-      ];
+    case 'travel':       return makeSlots(2);
+    default:             return makeSlots(5); // normal
   }
 }
 
@@ -1281,7 +1309,8 @@ app.patch('/api/itineraries/:id/days/:dayNum/slots', (req, res) => {
   const day = db.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ? AND day_number = ?').get(itinId, dayNum);
   if (!day) return res.status(404).json({ error: 'day not found' });
 
-  db.prepare('UPDATE itinerary_days SET stops_json = ? WHERE id = ?').run(JSON.stringify(slots), day.id);
+  // Clear cached routes so next load recomputes with new slot order
+  db.prepare('UPDATE itinerary_days SET stops_json = ?, legs_json = NULL WHERE id = ?').run(JSON.stringify(slots), day.id);
   res.json({ ok: true, slots });
 });
 
@@ -1349,17 +1378,14 @@ app.post('/api/itineraries/:id/days/:dayNum/suggest', async (req, res) => {
     return c ? c.title : 'Unknown';
   });
 
-  // Build the slot descriptions for LLM — slot_type now carries the user's free-text request
-  const slotDescs = (requestedSlots || []).map(s => {
-    return `Slot ${s.slot_index}: "${s.slot_type}"`;
-  }).join('\n');
+  // Build the user's request per slot
+  const slotRequests = (requestedSlots || []).map(s => s.slot_type).join(', ');
 
   const unplacedList = unplacedCards.map(c => `${c.title} [${c.category}]${c.address ? ` @ ${c.address}` : ''}`).join('\n');
 
   // Build anchor description for LLM
   let anchorDesc = '';
   if (anchor_lat && anchor_lng) {
-    // Find the card nearest to the anchor to describe it
     const anchorCard = allCards.find(c => c.lat && c.lng &&
       Math.abs(Number(c.lat) - anchor_lat) < 0.001 && Math.abs(Number(c.lng) - anchor_lng) < 0.001);
     if (anchorCard) {
@@ -1371,35 +1397,36 @@ app.post('/api/itineraries/:id/days/:dayNum/suggest', async (req, res) => {
     anchorDesc = `- The traveler will be starting from their hotel: ${hotel.title} (${hotel.address})`;
   }
 
-  const prompt = `You are a travel advisor for ${hotelCity}. A traveler needs suggestions for empty time slots in their day.
+  const prompt = `The traveler is asking for: "${slotRequests}"
+
+Suggest exactly 5 REAL places in ${hotelCity} that match this request. Every suggestion must directly relate to what they asked for.
 
 Context:
-- City: ${hotelCity}
 - Hotel: ${hotel?.title || 'Unknown'}${hotel?.address ? ` (${hotel.address})` : ''}
-- Date: ${day.date || `Day ${dayNum}`}
 - Already scheduled today: ${scheduledInDay.length ? scheduledInDay.join(', ') : 'Nothing yet'}
 - Travelers: ${settings.adults || 2} adults${(settings.children || []).length ? `, children ages: ${settings.children.join(', ')}` : ''}
 ${anchorDesc}
-${unplacedList ? `\nThe traveler has these unplaced ideas they're considering — prefer these over new suggestions when they fit:\n${unplacedList}` : ''}
+${unplacedList ? `\nTheir saved ideas (prefer these when they match the request):\n${unplacedList}` : ''}
 
-Empty slots to fill:
-${slotDescs}
+RULES:
+- EVERY suggestion must match "${slotRequests}". If they ask for ramen, suggest ramen restaurants. If they ask for parks, suggest parks. Never suggest unrelated places.
+- Use the EXACT official name as it appears on Google Maps (e.g. "Ichiran Shinjuku" not "Popular Ramen Spot").
+- All suggestions within 2-3km of the hotel or previous activity.
+- Write 2-3 sentences describing what makes each place special.
+- Include full street address.
 
-IMPORTANT: All suggestions MUST be within 2-3km of the hotel or the previous activity listed above. Do not suggest places far away.
-For EACH slot, suggest exactly 5 options that match what the traveler asked for. The quoted text is their request — it could be a type of food, an activity, a vibe, anything. Match it.
-
-Return JSON (no markdown):
+Return JSON only:
 {
   "suggestions": {
-    "<slot_index>": [
-      { "title": "...", "category": "attraction|restaurant|experience", "description": "One sentence", "address": "Full address", "reasoning": "Why this fits" }
+    "0": [
+      { "title": "Exact Google Maps Name", "category": "attraction|restaurant|experience", "description": "2-3 sentences", "address": "Full street address" }
     ]
   }
 }`;
 
   try {
     const response = await callLLM([
-      { role: 'system', content: 'You are a knowledgeable travel advisor. Always respond with valid JSON only.' },
+      { role: 'system', content: `You are a local expert for ${hotelCity}. You suggest ONLY real, specific establishments that match exactly what the traveler asks for. If they want ramen, every suggestion is a ramen restaurant. If they want museums, every suggestion is a museum. Never suggest unrelated places. Respond with valid JSON only.` },
       { role: 'user', content: prompt },
     ], 4096);
 
@@ -1422,16 +1449,30 @@ Return JSON (no markdown):
       if (!Array.isArray(opts)) continue;
       for (let i = 0; i < opts.length; i++) {
         try {
-          const place = await enrichPlace(opts[i].title + ' ' + hotelCity);
+          // Pass hotel coords as region for location bias, city name for search context
+          const regionHint = (hotel?.lat && hotel?.lng) ? `${hotel.lat},${hotel.lng}` : hotelCity;
+          const place = await enrichPlace(opts[i].title, regionHint);
           if (place) {
             opts[i].lat = place.lat;
             opts[i].lng = place.lng;
+            console.log(`[suggest] enriched "${opts[i].title}" → "${place.name}" lat=${place.lat} lng=${place.lng}`);
             if (place.image_url) opts[i].image_url = place.image_url;
             if (place.address) opts[i].address = place.address;
             if (place.rating) opts[i].rating = place.rating;
             if (place.name) opts[i].place_name = place.name;
+            if (place.place_id) opts[i].place_id = place.place_id;
+            if (place.opening_hours) opts[i].opening_hours = place.opening_hours;
+            if (place.price_level != null) opts[i].price_level = place.price_level;
+            if (place.summary) opts[i].summary = place.summary;
+            if (place.website) opts[i].website = place.website;
+            // Use richer description from Google if LLM description is short
+            if (place.summary && (!opts[i].description || opts[i].description.length < place.summary.length)) {
+              opts[i].description = place.summary;
+            }
           }
-        } catch { /* skip enrichment for this one */ }
+        } catch (enrichErr) {
+          console.warn(`enrichPlace failed for "${opts[i].title}":`, enrichErr.message);
+        }
       }
 
       // Filter out places too far from anchor and sort by distance
@@ -1470,7 +1511,7 @@ function airportCity(code) {
 
 // --- LLM transit route helper ---
 
-// Simple reverse-geocode: lat/lng → nearest major Japanese city
+// Simple reverse-geocode: lat/lng → nearest known city, fallback to settings.destination
 function nearestCity(lat, lng) {
   const cities = [
     { name: 'Tokyo', lat: 35.6812, lng: 139.7671 },
@@ -1492,6 +1533,13 @@ function nearestCity(lat, lng) {
   for (const c of cities) {
     const d = Math.sqrt((lat - c.lat) ** 2 + (lng - c.lng) ** 2);
     if (d < bestDist) { bestDist = d; best = c; }
+  }
+  // If nearest known city is >100km away, fall back to destination setting
+  if (bestDist > 0.9) { // ~100km in degrees
+    try {
+      const row = db.prepare("SELECT value FROM settings WHERE key = 'destination'").get();
+      if (row) return JSON.parse(row.value);
+    } catch {}
   }
   return best.name;
 }
@@ -1527,7 +1575,7 @@ Rules:
 
   try {
     const raw = await callLLM([
-      { role: 'system', content: `You are a Japan public transit expert. The origin is in ${fromCity} and destination is in ${toCity}. Return only valid JSON.` },
+      { role: 'system', content: `You are a public transit expert. The origin is in ${fromCity} and destination is in ${toCity}. Return only valid JSON.` },
       { role: 'user', content: prompt },
     ], 500);
 
@@ -1540,8 +1588,7 @@ Rules:
       if (objMatch) jsonStr = objMatch[0];
       transitData = JSON.parse(jsonStr);
     } catch {
-      // LLM returned bad JSON, fall back to driving directions
-      return fetchDirections(`${from.lat},${from.lng}`, `${to.lat},${to.lng}`);
+      return null;
     }
 
     // Geocode each station to get coordinates
@@ -1550,8 +1597,8 @@ Rules:
     stationPoints.push({ lat: from.lat, lng: from.lng });
 
     for (const station of (transitData.stations || [])) {
-      const stationCity = station.city || toCity || fromCity || 'Japan';
-      const loc = await geocode(`${station.name} station ${stationCity} Japan`);
+      const stationCity = station.city || toCity || fromCity;
+      const loc = await geocode(`${station.name} station ${stationCity}`);
       if (loc) {
         stationPoints.push({ lat: loc.lat, lng: loc.lng, name: station.name, line: station.line });
       }
@@ -1574,8 +1621,7 @@ Rules:
       status: 'OK',
     };
   } catch {
-    // Fall back to driving directions
-    return fetchDirections(`${from.lat},${from.lng}`, `${to.lat},${to.lng}`);
+    return null;
   }
 }
 
@@ -2381,7 +2427,7 @@ app.post('/api/itineraries/:id/days/:dayNum/load', async (req, res) => {
   // Starting point
   if (isFirstDay && outboundFlight?.arrival_airport) {
     // Arrival day: Airport → Hotel (check in, drop bags) → stops → Hotel
-    namedWaypoints.push({ lat: null, lng: null, name: `${outboundFlight.arrival_airport} Airport`, address: `${outboundFlight.arrival_airport} Airport, Japan` });
+    namedWaypoints.push({ lat: null, lng: null, name: `${outboundFlight.arrival_airport} Airport`, address: `${outboundFlight.arrival_airport} Airport` });
     if (hotelCard?.lat && hotelCard?.lng) {
       namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: `${hotelCard.title} (check-in)` });
     }
@@ -2421,7 +2467,7 @@ app.post('/api/itineraries/:id/days/:dayNum/load', async (req, res) => {
         namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: `${hotelCard.title} (pick up bags)` });
       }
     }
-    namedWaypoints.push({ lat: null, lng: null, name: `${returnFlight.departure_airport} Airport`, address: `${returnFlight.departure_airport} Airport, Japan` });
+    namedWaypoints.push({ lat: null, lng: null, name: `${returnFlight.departure_airport} Airport`, address: `${returnFlight.departure_airport} Airport` });
   } else if (hotelCard?.lat && hotelCard?.lng) {
     // Normal: end at today's hotel
     namedWaypoints.push({ lat: hotelCard.lat, lng: hotelCard.lng, name: hotelCard.title });
@@ -2443,19 +2489,44 @@ app.post('/api/itineraries/:id/days/:dayNum/load', async (req, res) => {
     for (let i = 0; i < validWaypoints.length - 1; i++) {
       const from = validWaypoints[i];
       const to = validWaypoints[i + 1];
+      const routes = [];
+      const origin = `${from.lat},${from.lng}`;
+      const dest = `${to.lat},${to.lng}`;
+
+      // Always get walking route (even if long)
       try {
-        // Try walking first — use if under 30 mins
-        const walkResult = await fetchDirections(`${from.lat},${from.lng}`, `${to.lat},${to.lng}`);
-        if (walkResult.mode === 'walking' && walkResult.duration_value <= 1800) {
-          legs.push(walkResult);
-        } else {
-          // For longer distances, ask LLM for transit route with station waypoints
-          const transitLeg = await getTransitRoute(from, to);
-          legs.push(transitLeg);
+        const walkParams = new URLSearchParams({
+          origin, destination: dest, mode: 'walking', key: GOOGLE_MAPS_API_KEY,
+        });
+        const walkRes = await fetch(`https://maps.googleapis.com/maps/api/directions/json?${walkParams}`);
+        if (walkRes.ok) {
+          const walkData = await walkRes.json();
+          const wRoute = walkData.routes?.[0];
+          const wLeg = wRoute?.legs?.[0];
+          if (wLeg) {
+            routes.push({
+              mode: 'walking',
+              duration: wLeg.duration?.text || 'unknown',
+              duration_value: wLeg.duration?.value || 0,
+              distance: wLeg.distance?.text || 'unknown',
+              polyline: wRoute.overview_polyline?.points || null,
+            });
+          }
         }
-      } catch {
-        legs.push({ duration: 'unknown', distance: 'unknown', polyline: null });
+      } catch {}
+
+      // Also get transit route via LLM (station-to-station)
+      try {
+        const transitLeg = await getTransitRoute(from, to);
+        if (transitLeg && transitLeg.duration !== 'unknown') {
+          routes.push(transitLeg);
+        }
+      } catch {}
+
+      if (routes.length === 0) {
+        routes.push({ duration: 'unknown', distance: 'unknown', polyline: null, mode: 'walking' });
       }
+      legs.push({ routes, from: { name: from.name }, to: { name: to.name } });
     }
   }
 
