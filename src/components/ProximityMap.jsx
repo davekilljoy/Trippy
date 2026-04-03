@@ -67,49 +67,33 @@ function PanToAnchor({ anchorCard }) {
 
 const PRICE_LABELS = ['', '$', '$$', '$$$', '$$$$'];
 
-// Map our category filters to Google Maps POI feature types
-// See: https://developers.google.com/maps/documentation/javascript/style-reference
-const FILTER_TO_POI_TYPES = {
+// Map our category filters to Google Maps POI feature types to hide
+const CATEGORY_TO_POI_TYPES = {
   restaurant: ['poi.business.food_and_drink'],
   hotel: ['poi.business.lodging'],
   shopping: ['poi.business.shopping'],
-  attraction: ['poi.attraction', 'poi.place_of_worship'],
-  experience: ['poi.sports_complex', 'poi.attraction'],
+  attraction: ['poi.attraction', 'poi.place_of_worship', 'poi.government', 'poi.school'],
+  experience: ['poi.sports_complex', 'poi.park'],
   transport: ['transit'],
 };
 
-function buildMapStyles(activeFilter) {
-  // No filter or 'all'/'approved' — show everything
-  if (!activeFilter || activeFilter === 'all' || activeFilter === 'approved') return [];
+function buildMapStyles(hiddenCategories) {
+  if (!hiddenCategories || hiddenCategories.length === 0) return [];
 
-  const showTypes = FILTER_TO_POI_TYPES[activeFilter] || [];
-  if (!showTypes.length) return [];
-
-  // Hide all POI, then show only the matching types
-  const styles = [
-    { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-    { featureType: 'poi', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
-  ];
-
-  for (const type of showTypes) {
-    styles.push(
-      { featureType: type, elementType: 'labels', stylers: [{ visibility: 'on' }] },
-      { featureType: type, elementType: 'geometry', stylers: [{ visibility: 'on' }] },
-    );
+  const styles = [];
+  for (const cat of hiddenCategories) {
+    const poiTypes = CATEGORY_TO_POI_TYPES[cat] || [];
+    for (const type of poiTypes) {
+      styles.push(
+        { featureType: type, elementType: 'labels', stylers: [{ visibility: 'off' }] },
+        { featureType: type, elementType: 'geometry', stylers: [{ visibility: 'off' }] },
+      );
+    }
   }
-
-  // Keep transit visible when filtering for transport
-  if (activeFilter === 'transport') {
-    styles.push(
-      { featureType: 'transit', elementType: 'labels', stylers: [{ visibility: 'on' }] },
-      { featureType: 'transit', elementType: 'geometry', stylers: [{ visibility: 'on' }] },
-    );
-  }
-
   return styles;
 }
 
-export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPlace, activeFilter }) {
+export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPlace, hiddenCategories }) {
   const [poiPlace, setPoiPlace] = useState(null);  // { ...placeData, _pos: {lat, lng} }
   const [poiLoading, setPoiLoading] = useState(null); // {lat, lng} while loading
   const [poiAdding, setPoiAdding] = useState(false);
@@ -187,7 +171,7 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
         disableDefaultUI={true}
         zoomControl={true}
         onClick={handleMapClick}
-        styles={buildMapStyles(activeFilter)}
+        styles={buildMapStyles(hiddenCategories)}
       >
         <FitBounds positions={positions} />
         <PanToAnchor anchorCard={anchorCard} />

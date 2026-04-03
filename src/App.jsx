@@ -269,6 +269,8 @@ export default function App() {
               category: inferCategory(place) || 'attraction',
             });
             await loadCards();
+            // Re-fetch after background description generation completes
+            setTimeout(loadCards, 4000);
           }}
           onEdit={(card) => setModal({ mode: 'edit', card })}
           onDelete={handleDelete}

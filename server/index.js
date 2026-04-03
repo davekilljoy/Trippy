@@ -1050,11 +1050,118 @@ app.post('/api/cards/generate', async (req, res) => {
   sendStatus('Checking existing ideas...');
   const existing = db.prepare('SELECT title FROM cards').all().map(c => c.title);
   const existingList = existing.length
-    ? `\n\nWE ALREADY HAVE THESE — do NOT suggest them or anything too similar:\n${existing.map(t => `- ${t}`).join('\n')}`
+    ? `\n\nWE ALREADY HAVE THESE — do NOT pick them or anything too similar:\n${existing.map(t => `- ${t}`).join('\n')}`
     : '';
 
   const dest = destination || 'Japan';
   const userPrompt = prompt || '';
+  const isNearMode = nearLat && nearLng && nearName;
+
+  // ===== NEAR MODE: Google finds nearby → LLM picks the vibe =====
+  if (isNearMode) {
+    try {
+      sendStatus(`Searching near ${nearName}...`);
+
+      // Step 1: Google Nearby Search — get real places within 1.5km
+      const nearbyParams = new URLSearchParams({
+        location: `${nearLat},${nearLng}`,
+        radius: 1500,
+        key: GOOGLE_MAPS_API_KEY,
+        language: 'en',
+      });
+      const nearbyRes = await fetch(`https://maps.googleapis.com/maps/api/place/nearbysearch/json?${nearbyParams}`);
+      const nearbyData = await nearbyRes.json();
+      let nearby = nearbyData.results || [];
+
+      // Filter out places we already have
+      const existingSet = new Set(existing.map(t => t.toLowerCase()));
+      nearby = nearby.filter(p => !existingSet.has((p.name || '').toLowerCase()));
+
+      if (!nearby.length) {
+        return sendDone([]);
+      }
+
+      sendStatus(`Found ${nearby.length} places nearby, matching to "${userPrompt}"...`);
+
+      // Step 2: Build a catalog for the LLM to pick from
+      const catalog = nearby.map((p, i) => {
+        const types = (p.types || []).join(', ');
+        return `${i + 1}. "${p.name}" — ${p.vicinity || ''} | Types: ${types} | Rating: ${p.rating || 'N/A'} | ${p.opening_hours?.open_now ? 'Open now' : ''}`;
+      }).join('\n');
+
+      // Step 3: LLM picks the best matches for the vibe
+      const pickPrompt = `You are helping a traveler find places near "${nearName}" in ${dest}.
+Their request: "${userPrompt}"
+Group: ${adults} adults, ${childrenDesc}
+
+Here are REAL places within walking distance. Pick the 5-8 that BEST match what they're looking for.
+For each pick, return the exact number from the list and write a 1-2 sentence description of why it matches.
+
+PLACES:
+${catalog}
+${existingList}
+
+Return ONLY a JSON array of objects with: "index" (number from list), "description" (why it matches), "category" (one of restaurant/attraction/experience/hotel/shopping/transport), "timing" (when to go, how long).
+No markdown, no explanation — just the raw JSON array.`;
+
+      const pickRaw = await callLLM([
+        { role: 'system', content: 'You are a JSON API. Return only valid JSON arrays. No markdown fences, no commentary. Output raw JSON only.' },
+        { role: 'user', content: pickPrompt },
+      ], 4096);
+
+      let picks;
+      try {
+        let jsonStr = pickRaw;
+        const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (fenceMatch) jsonStr = fenceMatch[1].trim();
+        const arrMatch = jsonStr.match(/\[[\s\S]*\]/);
+        if (arrMatch) jsonStr = arrMatch[0];
+        picks = JSON.parse(fixQuotes(jsonStr));
+      } catch {
+        return sendError('Failed to parse LLM picks');
+      }
+
+      if (!picks?.length) return sendDone([]);
+
+      sendStatus(`Enriching ${picks.length} picks...`);
+
+      // Step 4: Enrich each pick with full Google Places details
+      const results = [];
+      for (const pick of picks) {
+        const idx = pick.index - 1;
+        if (idx < 0 || idx >= nearby.length) continue;
+        const gPlace = nearby[idx];
+
+        // Get full details + photo
+        const detail = await placeDetails(gPlace.place_id);
+        const photo = detail?.photos?.[0]?.photo_reference;
+        const category = ['restaurant', 'attraction', 'experience', 'hotel', 'shopping', 'transport'].includes(pick.category)
+          ? pick.category : 'attraction';
+
+        results.push({
+          title: gPlace.name,
+          description: pick.description || detail?.editorial_summary?.overview || '',
+          address: detail?.formatted_address || gPlace.vicinity || '',
+          image_url: photo ? `/api/places/photo?ref=${photo}` : '',
+          lat: gPlace.geometry?.location?.lat || null,
+          lng: gPlace.geometry?.location?.lng || null,
+          website: detail?.website || detail?.url || '',
+          rating: gPlace.rating || null,
+          opening_hours: detail?.opening_hours ? JSON.stringify(detail.opening_hours) : null,
+          price_level: gPlace.price_level ?? null,
+          place_id: gPlace.place_id || null,
+          category,
+          timing: pick.timing || '',
+        });
+      }
+
+      return sendDone(results);
+    } catch (err) {
+      return sendError(err.message);
+    }
+  }
+
+  // ===== NORMAL MODE: LLM generates → Google verifies =====
 
   // Step 1: Classify intent
   sendStatus('Understanding what you\'re looking for...');
@@ -1066,7 +1173,6 @@ app.post('/api/cards/generate', async (req, res) => {
   let categories = ['restaurant', 'attraction', 'experience', 'hotel', 'shopping', 'transport'];
   let totalCount = 10;
   try {
-    // Strip thinking, then extract JSON
     const cleaned = classifyRaw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
@@ -1079,9 +1185,7 @@ app.post('/api/cards/generate', async (req, res) => {
       }
       if (parsed.count >= 3 && parsed.count <= 20) totalCount = parsed.count;
     }
-  } catch {
-    // Fall back to all categories
-  }
+  } catch {}
 
   const catInstruction = categories.length === 6
     ? `Generate ${totalCount} ideas spread across these categories: restaurant, attraction, experience, hotel, shopping, transport.`
@@ -1090,16 +1194,11 @@ app.post('/api/cards/generate', async (req, res) => {
   // Step 2: Search Tavily
   sendStatus(`Searching for ${categories.join(', ')} ideas...`);
 
-  const searchArea = nearName ? `near ${nearName} ${dest}` : dest;
   const webContext = await tavilySearch(
-    `best ${categories.join(' ')} in ${searchArea} ${dateFrom || ''} ${userPrompt}`,
+    `best ${categories.join(' ')} in ${dest} ${dateFrom || ''} ${userPrompt}`,
     5
   );
   const webBlock = webContext ? `\n\nWEB RESEARCH (use this for current, accurate suggestions):\n${webContext}` : '';
-
-  const nearContext = nearLat && nearLng && nearName
-    ? `\n\nPROXIMITY CONSTRAINT: ALL suggestions must be within easy walking distance (under 1km) of "${nearName}" (${nearLat}, ${nearLng}). Only suggest places that are genuinely nearby in that specific neighborhood.`
-    : '';
 
   const llmPrompt = `You are a Japan travel expert. Generate trip ideas for a group visiting Japan.
 
@@ -1107,7 +1206,7 @@ TRIP DETAILS:
 - Destination: ${dest}
 - Dates: ${dateFrom || 'flexible'} to ${dateTo || 'flexible'}
 - Group: ${adults} adults, ${childrenDesc}
-- Preferences: ${userPrompt || 'No specific preferences given'}${nearContext}${existingList}${webBlock}
+- Preferences: ${userPrompt || 'No specific preferences given'}${existingList}${webBlock}
 
 ${catInstruction}
 
@@ -1127,14 +1226,12 @@ Return ONLY a JSON array of objects. No markdown, no explanation, no wrapping �
       { role: 'user', content: llmPrompt },
     ], 8192);
 
-    // Extract JSON array from response (handle markdown fences if model wraps it)
     let jsonStr = raw;
     const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (fenceMatch) jsonStr = fenceMatch[1].trim();
     const arrMatch = jsonStr.match(/\[[\s\S]*\]/);
     if (arrMatch) jsonStr = arrMatch[0];
 
-    // Parse ideas — handle all the ways the LLM might mangle JSON
     let ideas;
     try {
       ideas = robustParseIdeas(jsonStr);
@@ -1159,10 +1256,7 @@ Return ONLY a JSON array of objects. No markdown, no explanation, no wrapping �
       sendStatus(`Verifying ${idea.title}... (${i + 1}/${ideas.length})`);
       const place = await enrichPlace(idea.title) || await autocompletePlaceSearch(idea.title);
 
-      if (!place || !place.image_url) {
-        // Skip unverified places — they're likely LLM hallucinations
-        continue;
-      }
+      if (!place || !place.image_url) continue;
 
       results.push({
         title: idea.title,

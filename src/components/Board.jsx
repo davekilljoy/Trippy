@@ -48,11 +48,8 @@ export default function Board({ cards, approvedCount, totalCount, onAdd, onAddPl
     });
   }, []);
 
-  // Which single filter is active (for map POI styling) — only when exactly one category is enabled
-  const activeFilter = useMemo(() => {
-    const enabled = CATEGORIES.filter(c => !disabledCats.has(c));
-    return enabled.length === 1 ? enabled[0] : 'all';
-  }, [disabledCats]);
+  // Pass disabled categories to map for POI styling
+  const disabledCatsArray = useMemo(() => [...disabledCats], [disabledCats]);
 
   const anchorCard = anchorId ? cards.find(c => c.id === anchorId) : null;
 
@@ -208,7 +205,7 @@ export default function Board({ cards, approvedCount, totalCount, onAdd, onAddPl
               anchorId={anchorId}
               onSelectAnchor={handleSelectAnchor}
               onAddPlace={onAddPlace}
-              activeFilter={activeFilter}
+              hiddenCategories={disabledCatsArray}
             />
           </div>
         </div>
