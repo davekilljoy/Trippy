@@ -7,6 +7,7 @@
   overflow: hidden;
   position: relative;
   transition: border-color 0.2s;
+  height: 100%;
 }
 
 .idea-card:hover {
@@ -73,6 +74,19 @@
   color: var(--paper);
   padding: 0.18rem 0.5rem;
   border-radius: 3px;
+}
+
+.card-rating-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  font-family: var(--font-body);
+  font-size: 0.62rem;
+  background: var(--gold);
+  color: var(--paper);
+  padding: 0.18rem 0.5rem;
+  border-radius: 3px;
+  font-weight: 500;
 }
 
 /* Body */
@@ -163,6 +177,21 @@
 
 .card-menu button.danger {
   color: var(--red);
+}
+
+/* Anchor highlight */
+.idea-card--anchor {
+  border-color: var(--gold);
+  border-width: 2px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 20%, transparent);
+}
+
+/* Distance badge */
+.card-distance {
+  font-size: 0.72rem;
+  color: var(--gold);
+  font-weight: 500;
+  margin-bottom: 0.2rem;
 }
 
 /* Address, description & timing */

@@ -50,6 +50,9 @@ export default function App() {
   // Flights (lifted from ItineraryPanel)
   const [flights, setFlights] = useState([]);
 
+  // Anchor card for proximity context (set by Board)
+  const [anchorCard, setAnchorCard] = useState(null);
+
   // Generate bar + picker state
   const [genPrompt, setGenPrompt] = useState('');
   const [genLoading, setGenLoading] = useState(false);
@@ -135,7 +138,15 @@ export default function App() {
     await loadCards();
   };
 
-  const tripParams = () => ({ destination, dateFrom, dateTo, adults, children });
+  const tripParams = () => {
+    const params = { destination, dateFrom, dateTo, adults, children };
+    if (anchorCard && anchorCard.lat && anchorCard.lng) {
+      params.nearLat = anchorCard.lat;
+      params.nearLng = anchorCard.lng;
+      params.nearName = anchorCard.title;
+    }
+    return params;
+  };
 
   const handleGenerate = async (e) => {
     e.preventDefault();
@@ -242,9 +253,25 @@ export default function App() {
           approvedCount={approvedCards.length}
           totalCount={cards.length}
           onAdd={() => setModal({ mode: 'add' })}
+          onAddPlace={async (place) => {
+            await createCard({
+              title: place.name,
+              address: place.address,
+              lat: place.lat,
+              lng: place.lng,
+              image_url: place.image_url,
+              link_url: place.website,
+              rating: place.rating,
+              opening_hours: place.opening_hours,
+              price_level: place.price_level,
+              place_id: place.place_id,
+            });
+            await loadCards();
+          }}
           onEdit={(card) => setModal({ mode: 'edit', card })}
           onDelete={handleDelete}
           onApprove={handleApprove}
+          onAnchorChange={setAnchorCard}
         />
       ) : (
         <ItineraryPanel
@@ -303,11 +330,16 @@ export default function App() {
             </div>
           ) : (
             <form className="gen-bar-form" onSubmit={handleGenerate}>
+              {anchorCard && (
+                <span className="gen-near-pill">
+                  Near {anchorCard.title.length > 20 ? anchorCard.title.slice(0, 20) + '…' : anchorCard.title}
+                </span>
+              )}
               <input
                 type="text"
                 value={genPrompt}
                 onChange={e => setGenPrompt(e.target.value)}
-                placeholder="Find itinerary ideas..."
+                placeholder={anchorCard ? `Ideas near ${anchorCard.title.split(' ').slice(0, 3).join(' ')}...` : 'Find itinerary ideas...'}
                 className="gen-input"
               />
               <button type="submit" className="gen-submit" disabled={!genPrompt.trim()}>Generate</button>

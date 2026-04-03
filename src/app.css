@@ -201,6 +201,18 @@ a:hover {
   gap: 0.5rem;
 }
 
+.gen-near-pill {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.25rem 0.6rem;
+  border-radius: 100px;
+  background: var(--gold);
+  color: var(--paper);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .gen-input {
   flex: 1;
   font-family: var(--font-body);

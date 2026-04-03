@@ -22,7 +22,7 @@ export function formatDistance(km) {
 export function formatTravelTime(km) {
   if (km == null) return null;
   const walkMins = Math.round(km / 0.08); // ~5km/h
-  const transitMins = Math.round(km / 0.5); // ~30km/h
-  if (walkMins <= 30) return `~${walkMins} min walk`;
-  return `~${transitMins} min transit`;
+  const driveMins = Math.round(km / 0.6); // ~36km/h city driving
+  if (walkMins <= 20) return `~${Math.max(1, walkMins)} min walk`;
+  return `~${Math.max(1, driveMins)} min drive`;
 }

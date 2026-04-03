@@ -61,18 +61,9 @@
   gap: 1.2rem;
 }
 
-.stats-bar {
+.stat-total {
   font-size: 0.78rem;
   color: var(--muted);
-}
-
-.stat-approved {
-  color: var(--gold);
-  font-weight: 500;
-}
-
-.stat-sep {
-  margin: 0 0.3rem;
 }
 
 .add-btn {
@@ -138,4 +129,202 @@
   padding: 4rem 1rem;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+/* --- Near filter --- */
+.near-filter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pill-near {
+  border-color: var(--gold);
+  color: var(--gold);
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pill-near.active {
+  background: var(--gold);
+  color: var(--paper);
+  border-color: var(--gold);
+}
+
+.near-clear {
+  font-weight: 700;
+  margin-left: 0.15rem;
+  opacity: 0.7;
+}
+
+.near-clear:hover {
+  opacity: 1;
+}
+
+/* Radius control inline */
+.near-radius {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.near-slider {
+  width: 70px;
+  height: 3px;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+.near-radius-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.5em;
+}
+
+/* Dropdown */
+.near-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.near-dropdown-title {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  padding: 0.5rem 0.7rem 0.25rem;
+}
+
+.near-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.7rem;
+  border: none;
+  background: none;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.near-dropdown-item:hover {
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
+}
+
+.near-dropdown-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.near-dropdown-cat {
+  font-size: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* --- Map toggle pill --- */
+.pill-map {
+  border-color: var(--ink);
+  color: var(--muted);
+}
+
+.pill-map.active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+/* --- Map mode layout --- */
+.board--with-map {
+  max-width: 100%;
+  padding: 1rem 1rem 0;
+}
+
+.board-map-layout {
+  display: flex;
+  height: calc(100vh - 140px);
+  gap: 0;
+}
+
+.board-cards-panel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 0.8rem;
+  padding-bottom: 4rem;
+}
+
+.board-map-panel {
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  padding-left: 0.8rem;
+}
+
+/* Narrower masonry in map mode */
+.masonry--map-mode {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+
+/* Clickable card wrapper in map mode */
+.map-card-clickable {
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: box-shadow 0.15s;
+  height: 100%;
+}
+
+.map-card-clickable:hover {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 30%, transparent);
+}
+
+/* Responsive: stack on narrow screens */
+@media (max-width: 900px) {
+  .board-map-layout {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .board-map-panel {
+    height: 50vh;
+    min-height: 280px;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-left: 0;
+    padding-top: 0.5rem;
+    order: -1;
+  }
+
+  .board-cards-panel {
+    max-height: 50vh;
+  }
+
+  .masonry--map-mode {
+    grid-template-columns: 1fr;
+  }
 }

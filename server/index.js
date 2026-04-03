@@ -152,11 +152,27 @@ app.get('/api/cards', (req, res) => {
   res.json(db.prepare(sql).all(...params));
 });
 
-app.post('/api/cards', (req, res) => {
-  const { title, description, address, lat, lng, image_url, link_url, category, timing,
+app.post('/api/cards', async (req, res) => {
+  let { title, description, address, lat, lng, image_url, link_url, category, timing,
     david_note, jen_note, david_approved, jen_approved,
     rating, opening_hours, price_level, place_id } = req.body;
   if (!title) return res.status(400).json({ error: 'title is required' });
+
+  // If no place_id, verify against Google Places and enrich
+  if (!place_id && GOOGLE_MAPS_API_KEY) {
+    const place = await enrichPlace(title) || await autocompletePlaceSearch(title);
+    if (place) {
+      place_id = place.place_id || place_id;
+      if (!lat && place.lat) lat = place.lat;
+      if (!lng && place.lng) lng = place.lng;
+      if (!image_url && place.image_url) image_url = place.image_url;
+      if (!address && place.address) address = place.address;
+      if (!rating && place.rating) rating = place.rating;
+      if (!opening_hours && place.opening_hours) opening_hours = place.opening_hours;
+      if (price_level == null && place.price_level != null) price_level = place.price_level;
+      if (!link_url && place.website) link_url = place.website;
+    }
+  }
 
   const stmt = db.prepare(`
     INSERT INTO cards (title, description, address, lat, lng, image_url, link_url, category, timing,
@@ -184,10 +200,23 @@ app.post('/api/cards', (req, res) => {
     place_id || null
   );
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
-  // Geocode + enrich with Google Places data in background (skip if lat/lng already provided)
-  if (!lat || !lng) geocodeCard(card).catch(() => {});
-  if (!place_id) enrichCardPlaceData(card).catch(() => {});
   res.status(201).json(card);
+
+  // Auto-generate description in background if none provided
+  if (!description && title) {
+    (async () => {
+      try {
+        const prompt = `Write a concise 1-2 sentence description of "${title}"${address ? ` (${address})` : ''} in Japan for a trip planning board. Category: ${category || 'attraction'}. Be vivid and practical — what makes it worth visiting. No markdown, just plain text.`;
+        const desc = await callLLM([
+          { role: 'system', content: 'You are a concise Japan travel expert. Respond with only the description, nothing else.' },
+          { role: 'user', content: prompt },
+        ], 120);
+        if (desc) {
+          db.prepare("UPDATE cards SET description = ?, updated_at = datetime('now') WHERE id = ?").run(desc, card.id);
+        }
+      } catch {}
+    })();
+  }
 });
 
 app.patch('/api/cards/:id', (req, res) => {
@@ -477,6 +506,41 @@ function unwrapIdeas(val) {
 
 // --- Google Places search + photos ---
 
+// Autocomplete search — more forgiving than findplacefromtext
+async function autocompletePlaceSearch(query) {
+  if (!GOOGLE_MAPS_API_KEY || !query) return null;
+  try {
+    const acParams = new URLSearchParams({
+      input: query,
+      key: GOOGLE_MAPS_API_KEY,
+      language: 'en',
+    });
+    const acRes = await fetch(`https://maps.googleapis.com/maps/api/place/autocomplete/json?${acParams}`);
+    if (!acRes.ok) return null;
+    const acData = await acRes.json();
+    const prediction = acData.predictions?.[0];
+    if (!prediction) return null;
+
+    const detail = await placeDetails(prediction.place_id);
+    if (!detail) return null;
+    const photo = detail.photos?.[0]?.photo_reference;
+    return {
+      name: detail.name,
+      place_id: prediction.place_id,
+      address: detail.formatted_address,
+      lat: detail.geometry?.location?.lat,
+      lng: detail.geometry?.location?.lng,
+      types: detail.types || [],
+      website: detail.website || '',
+      rating: detail.rating,
+      summary: detail.editorial_summary?.overview || '',
+      image_url: photo ? `/api/places/photo?ref=${photo}` : '',
+      opening_hours: detail.opening_hours ? JSON.stringify(detail.opening_hours) : null,
+      price_level: detail.price_level ?? null,
+    };
+  } catch { return null; }
+}
+
 async function searchPlace(query, region) {
   if (!GOOGLE_MAPS_API_KEY) return null;
   try {
@@ -586,6 +650,33 @@ app.get('/api/places/search', async (req, res) => {
   } catch (err) {
     console.error('Places search error:', err.message);
     res.json({ results: [] });
+  }
+});
+
+// Place details by place_id
+app.get('/api/places/detail', async (req, res) => {
+  const { place_id } = req.query;
+  if (!place_id || !GOOGLE_MAPS_API_KEY) return res.status(400).json({ error: 'place_id required' });
+  try {
+    const detail = await placeDetails(place_id);
+    if (!detail) return res.status(404).json({ error: 'not found' });
+    const photo = detail.photos?.[0]?.photo_reference;
+    res.json({
+      name: detail.name,
+      place_id: detail.place_id || place_id,
+      address: detail.formatted_address,
+      lat: detail.geometry?.location?.lat,
+      lng: detail.geometry?.location?.lng,
+      types: detail.types || [],
+      website: detail.website || detail.url || '',
+      rating: detail.rating || null,
+      summary: detail.editorial_summary?.overview || '',
+      image_url: photo ? `/api/places/photo?ref=${photo}` : '',
+      opening_hours: detail.opening_hours ? JSON.stringify(detail.opening_hours) : null,
+      price_level: detail.price_level ?? null,
+    });
+  } catch {
+    res.status(500).json({ error: 'failed to fetch details' });
   }
 });
 
@@ -779,18 +870,58 @@ app.post('/api/cards/describe', async (req, res) => {
 // --- Image backfill ---
 
 app.post('/api/cards/backfill-images', async (req, res) => {
-  const cards = db.prepare("SELECT id, title FROM cards WHERE image_url IS NULL OR image_url = ''").all();
+  const cards = db.prepare("SELECT * FROM cards WHERE image_url IS NULL OR image_url = ''").all();
   const results = [];
+  const errors = [];
 
   for (const card of cards) {
-    const url = await findCommonsImage(card.title);
-    if (url) {
-      db.prepare("UPDATE cards SET image_url = ?, updated_at = datetime('now') WHERE id = ?").run(url, card.id);
-      results.push({ id: card.id, title: card.title, image_url: url });
+    try {
+      // Try enrichPlace first (findplacefromtext), then autocomplete, then simplified name
+      let place = await enrichPlace(card.title);
+      if (!place || !place.image_url) {
+        place = await autocompletePlaceSearch(card.title);
+      }
+      if (!place || !place.image_url) {
+        // Try simplified: strip parenthetical, take first 3-4 words
+        const clean = card.title.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*[:–—].*/, '').trim();
+        const short = clean.split(/\s+/).slice(0, 4).join(' ');
+        if (short !== card.title) {
+          place = await autocompletePlaceSearch(short);
+        }
+      }
+      if (!place || !place.image_url) {
+        // Last resort: use address if available
+        if (card.address) {
+          place = await autocompletePlaceSearch(card.address);
+        }
+      }
+      if (!place || !place.image_url) {
+        errors.push({ id: card.id, title: card.title, reason: 'no photo found' });
+        continue;
+      }
+
+      // Update image_url and any other missing fields
+      const updates = { image_url: place.image_url };
+      if (!card.place_id && place.place_id) updates.place_id = place.place_id;
+      if (!card.lat && place.lat) updates.lat = place.lat;
+      if (!card.lng && place.lng) updates.lng = place.lng;
+      if (!card.rating && place.rating) updates.rating = place.rating;
+      if (!card.opening_hours && place.opening_hours) updates.opening_hours = place.opening_hours;
+      if (card.price_level == null && place.price_level != null) updates.price_level = place.price_level;
+
+      const sets = Object.keys(updates).map(k => `${k} = ?`);
+      sets.push("updated_at = datetime('now')");
+      const vals = Object.values(updates);
+      vals.push(card.id);
+      db.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+
+      results.push({ id: card.id, title: card.title, image_url: place.image_url });
+    } catch (err) {
+      errors.push({ id: card.id, title: card.title, reason: err.message });
     }
   }
 
-  res.json({ backfilled: results.length, total: cards.length, results });
+  res.json({ backfilled: results.length, total: cards.length, results, errors });
 });
 
 // --- Backfill Google Places data (opening hours, price level) ---
@@ -812,10 +943,95 @@ app.post('/api/cards/backfill-hours', async (req, res) => {
   res.json({ backfilled: results.length, total: cards.length, results });
 });
 
+// --- Backfill ratings + missing fields from Google Places ---
+
+app.post('/api/cards/backfill-ratings', async (req, res) => {
+  const cards = db.prepare("SELECT * FROM cards WHERE rating IS NULL AND title IS NOT NULL").all();
+  const results = [];
+  const errors = [];
+
+  for (const card of cards) {
+    try {
+      let detail = null;
+      if (card.place_id) {
+        detail = await placeDetails(card.place_id);
+      }
+      if (!detail) {
+        const place = await enrichPlace(card.title) || await autocompletePlaceSearch(card.title);
+        if (place) {
+          detail = place;
+          if (!card.place_id && place.place_id) {
+            db.prepare("UPDATE cards SET place_id = ? WHERE id = ?").run(place.place_id, card.id);
+          }
+        }
+      }
+      if (!detail || !detail.rating) {
+        errors.push({ id: card.id, title: card.title });
+        continue;
+      }
+
+      const updates = {};
+      if (detail.rating) updates.rating = detail.rating;
+      if (!card.opening_hours && (detail.opening_hours || detail.opening_hours_json)) {
+        updates.opening_hours = typeof detail.opening_hours === 'string' ? detail.opening_hours : JSON.stringify(detail.opening_hours);
+      }
+      if (card.price_level == null && detail.price_level != null) updates.price_level = detail.price_level;
+      if (!card.link_url && (detail.website || detail.url)) updates.link_url = detail.website || detail.url;
+      if (!card.image_url && detail.image_url) updates.image_url = detail.image_url;
+
+      const sets = Object.keys(updates).map(k => `${k} = ?`);
+      if (!sets.length) { errors.push({ id: card.id, title: card.title }); continue; }
+      sets.push("updated_at = datetime('now')");
+      db.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).run(...Object.values(updates), card.id);
+      results.push({ id: card.id, title: card.title, rating: updates.rating });
+    } catch (err) {
+      errors.push({ id: card.id, title: card.title });
+    }
+  }
+
+  res.json({ backfilled: results.length, total: cards.length, errors: errors.length, results });
+});
+
+// --- Backfill websites from Google Places ---
+
+app.post('/api/cards/backfill-websites', async (req, res) => {
+  const cards = db.prepare("SELECT * FROM cards WHERE (link_url IS NULL OR link_url = '') AND place_id IS NOT NULL").all();
+  const results = [];
+
+  for (const card of cards) {
+    try {
+      const detail = await placeDetails(card.place_id);
+      const website = detail?.website || detail?.url || '';
+      if (website) {
+        db.prepare("UPDATE cards SET link_url = ?, updated_at = datetime('now') WHERE id = ?").run(website, card.id);
+        results.push({ id: card.id, title: card.title, link_url: website });
+      }
+    } catch {}
+  }
+
+  // Also try cards without place_id
+  const noPlaceId = db.prepare("SELECT * FROM cards WHERE (link_url IS NULL OR link_url = '') AND (place_id IS NULL OR place_id = '')").all();
+  for (const card of noPlaceId) {
+    try {
+      const place = await enrichPlace(card.title) || await autocompletePlaceSearch(card.title);
+      if (place?.website) {
+        const updates = { link_url: place.website };
+        if (!card.place_id && place.place_id) updates.place_id = place.place_id;
+        const sets = Object.keys(updates).map(k => `${k} = ?`);
+        sets.push("updated_at = datetime('now')");
+        db.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).run(...Object.values(updates), card.id);
+        results.push({ id: card.id, title: card.title, link_url: place.website });
+      }
+    } catch {}
+  }
+
+  res.json({ backfilled: results.length, total: cards.length + noPlaceId.length, results });
+});
+
 // --- Generate ideas via LLM ---
 
 app.post('/api/cards/generate', async (req, res) => {
-  const { destination, dateFrom, dateTo, adults, children, prompt } = req.body;
+  const { destination, dateFrom, dateTo, adults, children, prompt, nearLat, nearLng, nearName } = req.body;
 
   // SSE setup
   res.setHeader('Content-Type', 'text/event-stream');
@@ -874,11 +1090,16 @@ app.post('/api/cards/generate', async (req, res) => {
   // Step 2: Search Tavily
   sendStatus(`Searching for ${categories.join(', ')} ideas...`);
 
+  const searchArea = nearName ? `near ${nearName} ${dest}` : dest;
   const webContext = await tavilySearch(
-    `best ${categories.join(' ')} in ${dest} ${dateFrom || ''} ${userPrompt}`,
+    `best ${categories.join(' ')} in ${searchArea} ${dateFrom || ''} ${userPrompt}`,
     5
   );
   const webBlock = webContext ? `\n\nWEB RESEARCH (use this for current, accurate suggestions):\n${webContext}` : '';
+
+  const nearContext = nearLat && nearLng && nearName
+    ? `\n\nPROXIMITY CONSTRAINT: ALL suggestions must be within easy walking distance (under 1km) of "${nearName}" (${nearLat}, ${nearLng}). Only suggest places that are genuinely nearby in that specific neighborhood.`
+    : '';
 
   const llmPrompt = `You are a Japan travel expert. Generate trip ideas for a group visiting Japan.
 
@@ -886,7 +1107,7 @@ TRIP DETAILS:
 - Destination: ${dest}
 - Dates: ${dateFrom || 'flexible'} to ${dateTo || 'flexible'}
 - Group: ${adults} adults, ${childrenDesc}
-- Preferences: ${userPrompt || 'No specific preferences given'}${existingList}${webBlock}
+- Preferences: ${userPrompt || 'No specific preferences given'}${nearContext}${existingList}${webBlock}
 
 ${catInstruction}
 
@@ -925,9 +1146,9 @@ Return ONLY a JSON array of objects. No markdown, no explanation, no wrapping �
       return sendError('No ideas parsed from LLM response');
     }
 
-    sendStatus(`Found ${ideas.length} ideas, fetching details...`);
+    sendStatus(`Found ${ideas.length} ideas, verifying against Google Places...`);
 
-    // Enrich each idea via Google Places, fall back to Commons for images
+    // Enrich each idea via Google Places — drop ideas that can't be verified
     const results = [];
     for (let i = 0; i < ideas.length; i++) {
       const idea = ideas[i];
@@ -935,18 +1156,26 @@ Return ONLY a JSON array of objects. No markdown, no explanation, no wrapping �
       const category = ['restaurant', 'attraction', 'experience', 'hotel', 'shopping', 'transport'].includes(idea.category)
         ? idea.category : 'attraction';
 
-      sendStatus(`Looking up ${idea.title}... (${i + 1}/${ideas.length})`);
-      const place = await enrichPlace(idea.title);
+      sendStatus(`Verifying ${idea.title}... (${i + 1}/${ideas.length})`);
+      const place = await enrichPlace(idea.title) || await autocompletePlaceSearch(idea.title);
+
+      if (!place || !place.image_url) {
+        // Skip unverified places — they're likely LLM hallucinations
+        continue;
+      }
 
       results.push({
         title: idea.title,
-        description: idea.description || place?.summary || '',
-        address: place?.address || idea.address || '',
-        image_url: place?.image_url || await findCommonsImage(idea.title) || '',
-        lat: place?.lat || null,
-        lng: place?.lng || null,
-        website: place?.website || '',
-        rating: place?.rating || null,
+        description: idea.description || place.summary || '',
+        address: place.address || idea.address || '',
+        image_url: place.image_url,
+        lat: place.lat || null,
+        lng: place.lng || null,
+        website: place.website || '',
+        rating: place.rating || null,
+        opening_hours: place.opening_hours || null,
+        price_level: place.price_level ?? null,
+        place_id: place.place_id || null,
         category,
         timing: idea.timing || '',
       });
@@ -960,32 +1189,62 @@ Return ONLY a JSON array of objects. No markdown, no explanation, no wrapping �
 
 // --- Bulk create cards ---
 
-app.post('/api/cards/bulk', (req, res) => {
+app.post('/api/cards/bulk', async (req, res) => {
   const { cards: items } = req.body;
   if (!items?.length) return res.status(400).json({ error: 'cards array required' });
 
   const stmt = db.prepare(`
-    INSERT INTO cards (title, description, address, image_url, category, timing)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO cards (title, description, address, lat, lng, image_url, link_url, category, timing,
+      rating, opening_hours, price_level, place_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const created = [];
+  const skipped = [];
   for (const item of items) {
     if (!item.title) continue;
+
+    // Use provided data or enrich via Google Places
+    let { lat, lng, image_url, address, rating, opening_hours, price_level, place_id } = item;
+    let link_url = item.link_url || item.website || '';
+    if (!place_id && GOOGLE_MAPS_API_KEY) {
+      const place = await enrichPlace(item.title) || await autocompletePlaceSearch(item.title);
+      if (place) {
+        place_id = place.place_id;
+        if (!lat && place.lat) lat = place.lat;
+        if (!lng && place.lng) lng = place.lng;
+        if (!image_url && place.image_url) image_url = place.image_url;
+        if (!address && place.address) address = place.address;
+        if (!rating && place.rating) rating = place.rating;
+        if (!opening_hours && place.opening_hours) opening_hours = place.opening_hours;
+        if (price_level == null && place.price_level != null) price_level = place.price_level;
+        if (!link_url && place.website) link_url = place.website;
+      } else {
+        skipped.push(item.title);
+        continue; // Skip cards that can't be verified against Google Places
+      }
+    }
+
     const info = stmt.run(
       item.title,
       item.description || null,
-      item.address || null,
-      item.image_url || null,
+      address || null,
+      lat || null,
+      lng || null,
+      image_url || null,
+      link_url || null,
       item.category || 'attraction',
       item.timing || null,
+      rating || null,
+      opening_hours || null,
+      price_level ?? null,
+      place_id || null,
     );
     const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
     created.push(card);
-    geocodeCard(card).catch(() => {});
   }
 
-  res.status(201).json({ created: created.length, cards: created });
+  res.status(201).json({ created: created.length, skipped, cards: created });
 });
 
 // --- Itinerary enrichment (SSE) ---

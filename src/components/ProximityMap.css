@@ -1,0 +1,161 @@
+/* ProximityMap — map panel for Board proximity view */
+
+.prox-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+}
+
+.prox-map-container {
+  flex: 1;
+  position: relative;
+  min-height: 200px;
+}
+
+.prox-map {
+  height: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.prox-legend {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0.2rem 0.2rem;
+}
+
+.prox-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.prox-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* POI InfoWindow card */
+.poi-card {
+  width: 260px;
+  overflow: hidden;
+}
+
+.poi-card--loading {
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--muted);
+  width: 180px;
+}
+
+.poi-img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  display: block;
+}
+
+.poi-body {
+  padding: 0.6rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.poi-header {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.poi-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 0.88rem;
+  font-weight: 500;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.poi-rating {
+  font-size: 0.62rem;
+  color: var(--gold);
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.poi-price {
+  font-size: 0.62rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.poi-addr {
+  font-size: 0.65rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.poi-summary {
+  font-size: 0.68rem;
+  color: var(--ink);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.poi-add-btn {
+  margin-top: 0.3rem;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.45rem 0;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+  transition: opacity 0.15s;
+  width: 100%;
+}
+
+.poi-add-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.poi-add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.poi-exists {
+  margin-top: 0.2rem;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  text-align: center;
+}
+
+.prox-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  font-size: 0.85rem;
+}

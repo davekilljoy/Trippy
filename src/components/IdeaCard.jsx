@@ -10,17 +10,14 @@ const CATEGORY_ICONS = {
   shopping: '🛍',
 };
 
-export default function IdeaCard({ card, onEdit, onDelete, onApprove }) {
+export default function IdeaCard({ card, onEdit, onDelete, onApprove, distanceBadge, isAnchor }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const bothApproved = card.david_approved && card.jen_approved;
-
   const title = card.link_url
     ? <a href={card.link_url} target="_blank" rel="noopener noreferrer">{card.title}</a>
     : card.title;
 
   return (
-    <div className={`idea-card ${bothApproved ? 'approved-both' : ''}`}>
-      {bothApproved && <div className="ribbon">In Itinerary</div>}
+    <div className={`idea-card ${isAnchor ? 'idea-card--anchor' : ''}`} data-card-id={card.id}>
 
       <div className="card-image">
         {card.image_url ? (
@@ -31,6 +28,7 @@ export default function IdeaCard({ card, onEdit, onDelete, onApprove }) {
           </div>
         )}
         <span className="card-category-badge">{card.category}</span>
+        {card.rating && <span className="card-rating-badge">{card.rating}★</span>}
       </div>
 
       <div className="card-body">
@@ -48,6 +46,9 @@ export default function IdeaCard({ card, onEdit, onDelete, onApprove }) {
         </div>
 
         {card.address && <p className="card-address">{card.address}</p>}
+        {distanceBadge && (
+          <p className="card-distance">{distanceBadge}</p>
+        )}
         {card.description && <p className="card-desc">{card.description}</p>}
         {card.timing && <p className="card-timing">{card.timing}</p>}
 
@@ -74,7 +75,7 @@ export default function IdeaCard({ card, onEdit, onDelete, onApprove }) {
             D
           </button>
           <span className="approval-label">
-            {bothApproved ? 'Both approved' :
+            {card.david_approved && card.jen_approved ? 'Both approved' :
              card.david_approved ? 'David approved' :
              card.jen_approved ? 'Jen approved' :
              'No votes'}
