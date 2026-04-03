@@ -6,6 +6,7 @@ import CardModal from './components/CardModal.jsx';
 import IdeaPicker from './components/IdeaPicker.jsx';
 import TripDetailsModal from './components/TripDetailsModal.jsx';
 import { fetchCards, fetchSettings, saveSettings, createCard, updateCard, deleteCard, toggleApproval, bulkCreateCards, generateIdeas, fetchFlights, createFlight, updateFlight, deleteFlight } from './lib/api.js';
+import { inferCategory } from './lib/places.js';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
@@ -265,6 +266,7 @@ export default function App() {
               opening_hours: place.opening_hours,
               price_level: place.price_level,
               place_id: place.place_id,
+              category: inferCategory(place) || 'attraction',
             });
             await loadCards();
           }}
