@@ -9,7 +9,7 @@ export default function DaySlotEditor({
   day,
   cards,
   itineraryId,
-  approvedCards,
+  starredCards,
   placedCardMap,
   hotels,
   onAddSlot,
@@ -155,7 +155,7 @@ export default function DaySlotEditor({
                   anchorLat={anchor.lat}
                   anchorLng={anchor.lng}
                   anchorLabel={anchor.label}
-                  approvedCards={approvedCards}
+                  starredCards={starredCards}
                   placedCardMap={placedCardMap}
                   hotel={hotel}
                   onRemove={() => onRemoveSlot(slot.slot_id)}

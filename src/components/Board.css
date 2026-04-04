@@ -44,12 +44,12 @@
   border-color: var(--ink);
 }
 
-.pill-approved {
+.pill-starred {
   border-color: var(--gold);
   color: var(--gold);
 }
 
-.pill-approved.active {
+.pill-starred.active {
   background: var(--gold);
   color: var(--paper);
   border-color: var(--gold);

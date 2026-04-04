@@ -10,7 +10,7 @@ const CATEGORY_ICONS = {
   shopping: '🛍',
 };
 
-export default function IdeaCard({ card, onEdit, onDelete, onApprove, distanceBadge, isAnchor }) {
+export default function IdeaCard({ card, onEdit, onDelete, onStar, distanceBadge, isAnchor }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const title = card.link_url
     ? <a href={card.link_url} target="_blank" rel="noopener noreferrer">{card.title}</a>
@@ -29,6 +29,12 @@ export default function IdeaCard({ card, onEdit, onDelete, onApprove, distanceBa
         )}
         <span className="card-category-badge">{card.category}</span>
         {card.rating && <span className="card-rating-badge">{card.rating}★</span>}
+        <button
+          className={`card-star-btn ${card.starred ? 'active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); onStar(); }}
+        >
+          {card.starred ? '★' : '☆'}
+        </button>
       </div>
 
       <div className="card-body">
@@ -67,26 +73,6 @@ export default function IdeaCard({ card, onEdit, onDelete, onApprove, distanceBa
           )}
         </div>
 
-        <div className="card-approval">
-          <button
-            className={`approve-toggle ${card.david_approved ? 'active' : ''}`}
-            onClick={() => onApprove('david')}
-          >
-            D
-          </button>
-          <span className="approval-label">
-            {card.david_approved && card.jen_approved ? 'Both approved' :
-             card.david_approved ? 'David approved' :
-             card.jen_approved ? 'Jen approved' :
-             'No votes'}
-          </span>
-          <button
-            className={`approve-toggle ${card.jen_approved ? 'active' : ''}`}
-            onClick={() => onApprove('jen')}
-          >
-            J
-          </button>
-        </div>
       </div>
     </div>
   );

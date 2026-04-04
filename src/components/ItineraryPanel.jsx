@@ -10,7 +10,7 @@ import SkeletonBuilder from './SkeletonBuilder.jsx';
 import SpotCard from './SpotCard.jsx';
 import './ItineraryPanel.css';
 
-export default function ItineraryPanel({ approvedCards, pendingCards, flights, onEditFlight, onDeleteFlight }) {
+export default function ItineraryPanel({ starredCards, pendingCards, flights, onEditFlight, onDeleteFlight }) {
   // Itinerary state
   const [versions, setVersions] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -60,7 +60,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
 
   // --- Build new itinerary ---
   const handleBuild = useCallback(async () => {
-    if (!approvedCards.length) return;
+    if (!starredCards.length) return;
     setError(null);
     setStatus('Creating itinerary...');
     setPhase('proposing');
@@ -68,7 +68,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
 
     try {
       // Create itinerary record
-      const cardIds = approvedCards.map(c => c.id);
+      const cardIds = starredCards.map(c => c.id);
       const created = await createItinerary(cardIds);
       setActiveId(created.id);
 
@@ -92,18 +92,18 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
     } finally {
       setStatus('');
     }
-  }, [approvedCards]);
+  }, [starredCards]);
 
   // --- Build V2 manual itinerary ---
   const handleBuildV2 = useCallback(async () => {
-    if (!approvedCards.length) return;
+    if (!starredCards.length) return;
     setError(null);
     setStatus('Creating itinerary...');
     setPhase('proposing');
     setShowModePicker(false);
 
     try {
-      const cardIds = approvedCards.map(c => c.id);
+      const cardIds = starredCards.map(c => c.id);
       const created = await createItinerary(cardIds, null, 'v2');
       setActiveId(created.id);
 
@@ -120,7 +120,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
     } finally {
       setStatus('');
     }
-  }, [approvedCards]);
+  }, [starredCards]);
 
   // Close mode picker on outside click
   useEffect(() => {
@@ -207,7 +207,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
       <div className="build-btn-wrap" ref={modePickerRef}>
         <button
           className="build-btn"
-          disabled={!approvedCards.length || phase === 'proposing' || phase === 'finalizing' || phase === 'loading'}
+          disabled={!starredCards.length || phase === 'proposing' || phase === 'finalizing' || phase === 'loading'}
           onClick={() => setShowModePicker(prev => !prev)}
         >
           {phase === 'proposing' || phase === 'finalizing' || phase === 'loading' ? 'Building...' : 'New Itinerary'}
@@ -256,7 +256,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
     return (
       <SkeletonBuilder
         itinerary={itinerary}
-        approvedCards={approvedCards}
+        starredCards={starredCards}
         headerContent={sidebarHeader}
         onUpdate={async () => {
           const data = await fetchItinerary(activeId);
@@ -274,13 +274,13 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
 
         <div className="sidebar-section">
           <h3 className="sidebar-heading">
-            Approved <span className="count-badge">{approvedCards.filter(c => c.category !== 'hotel').length}</span>
+            ★ Starred <span className="count-badge">{starredCards.filter(c => c.category !== 'hotel').length}</span>
           </h3>
-          {approvedCards.filter(c => c.category !== 'hotel').length === 0 ? (
-            <p className="sidebar-empty">No items approved by both yet.</p>
+          {starredCards.filter(c => c.category !== 'hotel').length === 0 ? (
+            <p className="sidebar-empty">No starred items yet.</p>
           ) : (
             <div className="sidebar-cards">
-              {approvedCards.filter(c => c.category !== 'hotel').map(c => (
+              {starredCards.filter(c => c.category !== 'hotel').map(c => (
                 <SpotCard
                   key={c.id}
                   card={c}
@@ -304,14 +304,14 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
 
         {phase === 'idle' && !itinerary && (
           <div className="itinerary-placeholder">
-            <p>Approve items on the Board, then click <strong>Build Itinerary</strong> to generate a day-by-day plan with maps, routes, and tips.</p>
+            <p>Star items on the Board, then click <strong>New Itinerary</strong> to generate a day-by-day plan with maps, routes, and tips.</p>
           </div>
         )}
 
         {phase === 'reviewing' && itinerary?.proposal && (
           <ProposalReview
             proposal={itinerary.proposal}
-            cards={itinerary.cards || approvedCards}
+            cards={itinerary.cards || starredCards}
             onFinalize={handleFinalize}
           />
         )}
@@ -333,7 +333,7 @@ export default function ItineraryPanel({ approvedCards, pendingCards, flights, o
                 <DayCard
                   key={day.id}
                   day={day}
-                  cards={itinerary.cards || approvedCards}
+                  cards={itinerary.cards || starredCards}
                   itineraryId={activeId}
                   liveData={live || null}
                 />

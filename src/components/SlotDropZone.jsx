@@ -14,7 +14,7 @@ export default function SlotDropZone({
   anchorLat,
   anchorLng,
   anchorLabel,
-  approvedCards,
+  starredCards,
   placedCardMap,
   hotel,
   onRemove,
@@ -65,7 +65,7 @@ export default function SlotDropZone({
   // Approved cards: proximity-sorted, text-filtered
   const nearbyCards = useMemo(() => {
     if (!open) return [];
-    let available = (approvedCards || []).filter(c => {
+    let available = (starredCards || []).filter(c => {
       if (placedCardMap[c.id]) return false;
       if (c.category === 'hotel') return false;
       return true;
@@ -87,7 +87,7 @@ export default function SlotDropZone({
         .sort((a, b) => (a._dist ?? 999) - (b._dist ?? 999));
     }
     return available;
-  }, [open, filter, approvedCards, placedCardMap, anchorLat, anchorLng]);
+  }, [open, filter, starredCards, placedCardMap, anchorLat, anchorLng]);
 
   const handleAskAI = async (e) => {
     e.preventDefault();
@@ -126,13 +126,13 @@ export default function SlotDropZone({
   };
 
   const handleSelectLlm = async (sug) => {
-    const match = (approvedCards || []).find(c => c.title.toLowerCase() === sug.title?.toLowerCase());
+    const match = (starredCards || []).find(c => c.title.toLowerCase() === sug.title?.toLowerCase());
     if (match) { handleSelectCard(match); return; }
     try {
       const newCard = await createCard({
         title: sug.title, description: sug.description || sug.summary, address: sug.address,
         lat: sug.lat, lng: sug.lng, image_url: sug.image_url,
-        category: sug.category || 'attraction', david_approved: 1, jen_approved: 1,
+        category: sug.category || 'attraction', starred: 1,
         rating: sug.rating, opening_hours: sug.opening_hours,
         price_level: sug.price_level, place_id: sug.place_id,
       });

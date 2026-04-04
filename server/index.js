@@ -24,8 +24,7 @@ db.exec(`
     timing TEXT,
     david_note TEXT,
     jen_note TEXT,
-    david_approved INTEGER NOT NULL DEFAULT 0,
-    jen_approved INTEGER NOT NULL DEFAULT 0,
+    starred INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -102,6 +101,8 @@ try { db.exec('ALTER TABLE cards ADD COLUMN price_level INTEGER'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN business_status TEXT'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN rating REAL'); } catch {}
 try { db.exec('ALTER TABLE itineraries ADD COLUMN mode TEXT NOT NULL DEFAULT \'v1\''); } catch {}
+try { db.exec('ALTER TABLE cards ADD COLUMN starred INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec('UPDATE cards SET starred = 1 WHERE david_approved = 1 AND jen_approved = 1'); } catch {}
 
 
 const app = express();
@@ -129,7 +130,7 @@ app.put('/api/settings', (req, res) => {
 // --- Cards CRUD ---
 
 app.get('/api/cards', (req, res) => {
-  const { category, approved } = req.query;
+  const { category, starred } = req.query;
   let sql = 'SELECT * FROM cards';
   const conditions = [];
   const params = [];
@@ -138,10 +139,8 @@ app.get('/api/cards', (req, res) => {
     conditions.push('category = ?');
     params.push(category);
   }
-  if (approved === 'both') {
-    conditions.push('david_approved = 1 AND jen_approved = 1');
-  } else if (approved === 'any') {
-    conditions.push('(david_approved = 1 OR jen_approved = 1)');
+  if (starred === '1') {
+    conditions.push('starred = 1');
   }
 
   if (conditions.length) {
@@ -154,7 +153,7 @@ app.get('/api/cards', (req, res) => {
 
 app.post('/api/cards', async (req, res) => {
   let { title, description, address, lat, lng, image_url, link_url, category, timing,
-    david_note, jen_note, david_approved, jen_approved,
+    david_note, jen_note, starred,
     rating, opening_hours, price_level, place_id } = req.body;
   if (!title) return res.status(400).json({ error: 'title is required' });
 
@@ -176,9 +175,9 @@ app.post('/api/cards', async (req, res) => {
 
   const stmt = db.prepare(`
     INSERT INTO cards (title, description, address, lat, lng, image_url, link_url, category, timing,
-      david_note, jen_note, david_approved, jen_approved,
+      david_note, jen_note, starred,
       rating, opening_hours, price_level, place_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const info = stmt.run(
     title,
@@ -192,8 +191,7 @@ app.post('/api/cards', async (req, res) => {
     timing || null,
     david_note || null,
     jen_note || null,
-    david_approved ? 1 : 0,
-    jen_approved ? 1 : 0,
+    starred ? 1 : 0,
     rating || null,
     opening_hours || null,
     price_level ?? null,
@@ -226,7 +224,7 @@ app.patch('/api/cards/:id', (req, res) => {
   const allowed = [
     'title', 'description', 'address', 'lat', 'lng', 'image_url', 'link_url',
     'category', 'timing', 'david_note', 'jen_note',
-    'david_approved', 'jen_approved'
+    'starred'
   ];
   const sets = [];
   const params = [];
@@ -251,17 +249,12 @@ app.delete('/api/cards/:id', (req, res) => {
   res.json({ deleted: true });
 });
 
-app.post('/api/cards/:id/approve', (req, res) => {
-  const { person } = req.body;
-  if (!['david', 'jen'].includes(person)) {
-    return res.status(400).json({ error: 'person must be "david" or "jen"' });
-  }
-  const col = `${person}_approved`;
+app.post('/api/cards/:id/star', (req, res) => {
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(req.params.id);
   if (!card) return res.status(404).json({ error: 'not found' });
 
-  const newVal = card[col] ? 0 : 1;
-  db.prepare(`UPDATE cards SET ${col} = ?, updated_at = datetime('now') WHERE id = ?`).run(newVal, req.params.id);
+  const newVal = card.starred ? 0 : 1;
+  db.prepare("UPDATE cards SET starred = ?, updated_at = datetime('now') WHERE id = ?").run(newVal, req.params.id);
   res.json(db.prepare('SELECT * FROM cards WHERE id = ?').get(req.params.id));
 });
 
@@ -1597,7 +1590,7 @@ app.get('/api/itineraries/:id', (req, res) => {
   }
   const allCardIds = [...new Set([...cardIds, ...slotCardIds])];
 
-  // Include actual card data so frontend doesn't depend on current approvedCards
+  // Include actual card data so frontend doesn't depend on current starredCards
   let cards = [];
   if (allCardIds.length) {
     const placeholders = allCardIds.map(() => '?').join(',');

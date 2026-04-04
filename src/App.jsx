@@ -5,7 +5,7 @@ import ItineraryPanel from './components/ItineraryPanel.jsx';
 import CardModal from './components/CardModal.jsx';
 import IdeaPicker from './components/IdeaPicker.jsx';
 import TripDetailsModal from './components/TripDetailsModal.jsx';
-import { fetchCards, fetchSettings, saveSettings, createCard, updateCard, deleteCard, toggleApproval, bulkCreateCards, generateIdeas, fetchFlights, createFlight, updateFlight, deleteFlight } from './lib/api.js';
+import { fetchCards, fetchSettings, saveSettings, createCard, updateCard, deleteCard, toggleStar, bulkCreateCards, generateIdeas, fetchFlights, createFlight, updateFlight, deleteFlight } from './lib/api.js';
 import { inferCategory } from './lib/places.js';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -134,8 +134,8 @@ export default function App() {
     await loadCards();
   };
 
-  const handleApprove = async (id, person) => {
-    await toggleApproval(id, person);
+  const handleStar = async (id) => {
+    await toggleStar(id);
     await loadCards();
   };
 
@@ -188,8 +188,8 @@ export default function App() {
     setPickerIdeas(null);
   };
 
-  const approvedCards = cards.filter(c => c.david_approved && c.jen_approved);
-  const pendingCards = cards.filter(c => !(c.david_approved && c.jen_approved));
+  const starredCards = cards.filter(c => c.starred);
+  const pendingCards = cards.filter(c => !c.starred);
 
   const outboundFlight = flights.find(f => f.direction === 'outbound');
   const returnFlight = flights.find(f => f.direction === 'return');
@@ -251,8 +251,6 @@ export default function App() {
       {view === 'board' ? (
         <Board
           cards={cards}
-          approvedCount={approvedCards.length}
-          totalCount={cards.length}
           onAdd={() => setModal({ mode: 'add' })}
           onAddPlace={async (place) => {
             await createCard({
@@ -274,12 +272,12 @@ export default function App() {
           }}
           onEdit={(card) => setModal({ mode: 'edit', card })}
           onDelete={handleDelete}
-          onApprove={handleApprove}
+          onStar={handleStar}
           onAnchorChange={setAnchorCard}
         />
       ) : (
         <ItineraryPanel
-          approvedCards={approvedCards}
+          starredCards={starredCards}
           pendingCards={pendingCards}
           flights={flights}
           onEditFlight={() => setShowTripModal(true)}

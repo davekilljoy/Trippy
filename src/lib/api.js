@@ -49,13 +49,12 @@ export async function deleteCard(id) {
   return res.json();
 }
 
-export async function toggleApproval(id, person) {
-  const res = await fetch(`${BASE}/cards/${id}/approve`, {
+export async function toggleStar(id) {
+  const res = await fetch(`${BASE}/cards/${id}/star`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ person }),
   });
-  if (!res.ok) throw new Error('Failed to toggle approval');
+  if (!res.ok) throw new Error('Failed to toggle star');
   return res.json();
 }
 

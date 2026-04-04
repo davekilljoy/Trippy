@@ -6,8 +6,9 @@ import './Board.css';
 
 const CATEGORIES = ['attraction', 'restaurant', 'hotel', 'experience', 'transport', 'shopping'];
 
-export default function Board({ cards, approvedCount, totalCount, onAdd, onAddPlace, onEdit, onDelete, onApprove, onAnchorChange }) {
+export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onStar, onAnchorChange }) {
   const [disabledCats, setDisabledCats] = useState(new Set());
+  const [starredOnly, setStarredOnly] = useState(false);
   const [showMap, setShowMap] = useState(true);
   const [anchorId, setAnchorId] = useState(null);
   const [radiusKm, setRadiusKm] = useState(1.5);
@@ -34,10 +35,12 @@ export default function Board({ cards, approvedCount, totalCount, onAdd, onAddPl
   // Cards with coordinates for the Near dropdown
   const geoCards = useMemo(() => cards.filter(c => c.lat && c.lng), [cards]);
 
-  // Category toggle filter
-  const catFiltered = disabledCats.size === 0
-    ? cards
-    : cards.filter(c => !disabledCats.has(c.category));
+  // Category + starred filter
+  const catFiltered = cards.filter(c => {
+    if (disabledCats.size > 0 && disabledCats.has(c.category)) return false;
+    if (starredOnly && !c.starred) return false;
+    return true;
+  });
 
   const toggleCat = useCallback((cat) => {
     setDisabledCats(prev => {
@@ -109,7 +112,7 @@ export default function Board({ cards, approvedCount, totalCount, onAdd, onAddPl
             card={card}
             onEdit={() => onEdit(card)}
             onDelete={() => onDelete(card.id)}
-            onApprove={(person) => onApprove(card.id, person)}
+            onStar={() => onStar(card.id)}
             distanceBadge={badge}
             isAnchor={card.id === anchorId}
           />
@@ -131,6 +134,13 @@ export default function Board({ cards, approvedCount, totalCount, onAdd, onAddPl
               {cat}
             </button>
           ))}
+
+          <button
+            className={`pill pill-starred ${starredOnly ? 'active' : ''}`}
+            onClick={() => setStarredOnly(s => !s)}
+          >
+            ★ Starred
+          </button>
 
           {/* Near filter */}
           <div className="near-filter" ref={nearRef}>

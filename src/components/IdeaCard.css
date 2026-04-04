@@ -14,11 +14,6 @@
   border-color: var(--muted);
 }
 
-.idea-card.approved-both {
-  border-color: var(--gold);
-  border-width: 2px;
-  box-shadow: 0 0 0 1px var(--gold-light);
-}
 
 /* Ribbon */
 .ribbon {
@@ -254,46 +249,29 @@
   line-height: 1.4;
 }
 
-/* Approval row */
-.card-approval {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--border);
-  margin-top: auto;
-}
-
-.approve-toggle {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border);
-  background: transparent;
-  font-family: var(--font-body);
-  font-size: 0.7rem;
-  font-weight: 500;
+/* Star button (top-right of image) */
+.card-star-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #fff;
+  border: none;
+  font-size: 1.1rem;
   color: var(--muted);
-  transition: all 0.15s;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem 0.35rem;
+  line-height: 1;
+  border-radius: 4px;
+  transition: color 0.15s, transform 0.15s, background 0.15s;
+  z-index: 2;
 }
 
-.approve-toggle:hover {
-  border-color: var(--ink);
-  color: var(--ink);
+.card-star-btn:hover {
+  color: var(--gold);
+  background: #fff;
+  transform: scale(1.15);
 }
 
-.approve-toggle.active {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
-}
-
-.approval-label {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  text-align: center;
-  flex: 1;
+.card-star-btn.active {
+  color: var(--gold);
 }

@@ -16,22 +16,22 @@ import SplitDivider from './SplitDivider.jsx';
 import SpotCard from './SpotCard.jsx';
 import './SkeletonBuilder.css';
 
-export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate, headerContent }) {
+export default function SkeletonBuilder({ itinerary, starredCards, onUpdate, headerContent }) {
   const [days, setDays] = useState(itinerary.days || []);
   const [activeCard, setActiveCard] = useState(null);
   const [activeDragType, setActiveDragType] = useState(null);
   const [extraCards, setExtraCards] = useState(() => {
-    const approvedIds = new Set((approvedCards || []).map(c => c.id));
+    const approvedIds = new Set((starredCards || []).map(c => c.id));
     return (itinerary.cards || []).filter(c => !approvedIds.has(c.id));
   });
 
   const allCards = useMemo(() => {
     const map = new Map();
-    for (const c of (approvedCards || [])) map.set(c.id, c);
+    for (const c of (starredCards || [])) map.set(c.id, c);
     for (const c of (itinerary.cards || [])) map.set(c.id, c);
     for (const c of extraCards) map.set(c.id, c);
     return [...map.values()];
-  }, [approvedCards, itinerary.cards, extraCards]);
+  }, [starredCards, itinerary.cards, extraCards]);
 
   const hotels = useMemo(() =>
     allCards.filter(c => c.category === 'hotel'),
@@ -200,7 +200,7 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate, he
 
   // Select card from dropdown into a slot
   const handleSelect = useCallback(async (dayNum, slotId, card) => {
-    if (!(approvedCards || []).some(c => c.id === card.id)) {
+    if (!(starredCards || []).some(c => c.id === card.id)) {
       setExtraCards(prev => prev.some(c => c.id === card.id) ? prev : [...prev, card]);
     }
     setDays(prev => prev.map(d => {
@@ -217,7 +217,7 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate, he
       );
       await updateDaySlots(itinerary.id, dayNum, newSlots);
     }
-  }, [days, itinerary.id, approvedCards]);
+  }, [days, itinerary.id, starredCards]);
 
   const handleSplit = useCallback(async (afterDayNum) => {
     const newLegs = [];
@@ -302,10 +302,10 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate, he
           {headerContent}
           <div className="sidebar-section">
             <h3 className="sidebar-heading">
-              Your Ideas <span className="count-badge">{(approvedCards || []).filter(c => c.category !== 'hotel').length}</span>
+              Your Ideas <span className="count-badge">{(starredCards || []).filter(c => c.category !== 'hotel').length}</span>
             </h3>
             <SidebarDropZone>
-              {(approvedCards || []).filter(c => c.category !== 'hotel').map(card => (
+              {(starredCards || []).filter(c => c.category !== 'hotel').map(card => (
                 <SidebarCard
                   key={card.id}
                   card={card}
@@ -333,7 +333,7 @@ export default function SkeletonBuilder({ itinerary, approvedCards, onUpdate, he
                       day={day}
                       cards={allCards}
                       itineraryId={itinerary.id}
-                      approvedCards={allCards}
+                      starredCards={allCards}
                       placedCardMap={placedCardMap}
                       hotels={hotels}
                       onAddSlot={() => handleAddSlot(day.day_number)}
