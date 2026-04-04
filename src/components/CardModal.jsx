@@ -176,8 +176,16 @@ export default function CardModal({ mode, card, onSave, onClose }) {
               <ul className="suggestions">
                 {suggestions.map(s => (
                   <li key={s.place_id} onClick={() => handlePickPlace(s)}>
-                    <span className="suggestion-name">{s.name}</span>
-                    <span className="suggestion-addr">{s.address}</span>
+                    {s.image_url && (
+                      <img className="suggestion-img" src={s.image_url} alt="" loading="lazy" />
+                    )}
+                    <div className="suggestion-info">
+                      <span className="suggestion-name">
+                        {s.name}
+                        {s.rating && <span className="suggestion-rating">{s.rating}★</span>}
+                      </span>
+                      <span className="suggestion-addr">{s.address}</span>
+                    </div>
                   </li>
                 ))}
               </ul>

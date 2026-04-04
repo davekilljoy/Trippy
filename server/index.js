@@ -592,12 +592,53 @@ app.get('/api/places/search', async (req, res) => {
   if (!q || !GOOGLE_MAPS_API_KEY) return res.json({ results: [] });
 
   try {
+    // Resolve destination cities for location bias
+    let dest = '';
+    try {
+      const row = db.prepare("SELECT value FROM settings WHERE key = 'destination'").get();
+      if (row) dest = JSON.parse(row.value);
+    } catch {}
+    const cityNames = dest ? dest.split(/,\s*/).map(s => s.trim()).filter(Boolean) : [];
+    const KNOWN_CITIES = [
+      { name: 'Tokyo', lat: 35.6812, lng: 139.7671 },
+      { name: 'Osaka', lat: 34.6937, lng: 135.5023 },
+      { name: 'Kyoto', lat: 35.0116, lng: 135.7681 },
+      { name: 'Nara', lat: 34.6851, lng: 135.8048 },
+      { name: 'Kobe', lat: 34.6901, lng: 135.1956 },
+      { name: 'Yokohama', lat: 35.4437, lng: 139.6380 },
+      { name: 'Hiroshima', lat: 34.3853, lng: 132.4553 },
+      { name: 'Fukuoka', lat: 33.5904, lng: 130.4017 },
+      { name: 'Sapporo', lat: 43.0618, lng: 141.3545 },
+      { name: 'Nagoya', lat: 35.1815, lng: 136.9066 },
+      { name: 'Kamakura', lat: 35.3197, lng: 139.5466 },
+      { name: 'Hakone', lat: 35.2326, lng: 139.1070 },
+      { name: 'Narita', lat: 35.7720, lng: 140.3929 },
+      { name: 'Uji', lat: 34.8843, lng: 135.8004 },
+    ];
+    const matched = cityNames.map(n => KNOWN_CITIES.find(c => c.name.toLowerCase() === n.toLowerCase())).filter(Boolean);
+
     // Step 1: Autocomplete
     const acParams = new URLSearchParams({
       input: q,
       key: GOOGLE_MAPS_API_KEY,
       language: 'en',
     });
+
+    if (matched.length > 0) {
+      // Compute center of matched cities and bias around them
+      const cLat = matched.reduce((s, c) => s + c.lat, 0) / matched.length;
+      const cLng = matched.reduce((s, c) => s + c.lng, 0) / matched.length;
+      // Radius: cover all matched cities + 50km buffer
+      const maxSpread = matched.reduce((m, c) => Math.max(m, haversineKm(cLat, cLng, c.lat, c.lng)), 0);
+      const radiusM = Math.max(30000, Math.round((maxSpread + 50) * 1000));
+      acParams.set('location', `${cLat},${cLng}`);
+      acParams.set('radius', String(radiusM));
+      acParams.set('strictbounds', 'true');
+    } else {
+      // Fallback: broad Japan bias
+      acParams.set('components', 'country:jp');
+    }
+
     const acRes = await fetch(`https://maps.googleapis.com/maps/api/place/autocomplete/json?${acParams}`);
     if (!acRes.ok) return res.json({ results: [] });
     const acData = await acRes.json();
@@ -1163,6 +1204,15 @@ No markdown, no explanation — just the raw JSON array.`;
 
   // ===== NORMAL MODE: LLM generates → Google verifies =====
 
+  // Geocode destination for location verification
+  let destCenter = null;
+  if (dest) {
+    // Use first city if comma-separated (e.g. "Tokyo, Kyoto" → "Tokyo")
+    const primaryCity = dest.split(',')[0].trim();
+    const geo = await geocode(primaryCity);
+    if (geo) destCenter = geo;
+  }
+
   // Step 1: Classify intent
   sendStatus('Understanding what you\'re looking for...');
   const classifyRaw = await callLLM([
@@ -1210,11 +1260,13 @@ TRIP DETAILS:
 
 ${catInstruction}
 
+IMPORTANT: ALL suggestions MUST be located in ${dest}. Do NOT suggest places in other cities or regions.
+
 For EACH idea return a JSON object with these fields:
-- "title": short name of the place
+- "title": short name of the place (the real business name)
 - "category": one of restaurant/attraction/experience/hotel/shopping/transport
 - "description": 2 vivid sentences about why it's worth it
-- "address": full address or area in Japan
+- "address": full address in ${dest}, Japan
 - "timing": when to go, how long to spend, any booking lead time
 
 Return ONLY a JSON array of objects. No markdown, no explanation, no wrapping — just the raw JSON array starting with [ and ending with ].`;
@@ -1257,6 +1309,15 @@ Return ONLY a JSON array of objects. No markdown, no explanation, no wrapping �
       const place = await enrichPlace(idea.title) || await autocompletePlaceSearch(idea.title);
 
       if (!place || !place.image_url) continue;
+
+      // Verify the place is actually near the destination (within 50km)
+      if (destCenter && place.lat && place.lng) {
+        const dLat = (place.lat - destCenter.lat) * Math.PI / 180;
+        const dLng = (place.lng - destCenter.lng) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(destCenter.lat * Math.PI / 180) * Math.cos(place.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        const distKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        if (distKm > 50) continue; // Not in the right city
+      }
 
       results.push({
         title: idea.title,

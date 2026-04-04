@@ -171,6 +171,13 @@
   flex-shrink: 0;
 }
 
+.picker-rating {
+  font-size: 0.62rem;
+  color: var(--gold);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
 .picker-item-title {
   font-family: var(--font-display);
   font-style: italic;

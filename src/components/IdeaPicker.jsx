@@ -68,6 +68,7 @@ export default function IdeaPicker({ ideas, onAdd, onFollowUp, onClose, loading,
                 <div className="picker-info-top">
                   <span className="picker-cat">{idea.category}</span>
                   <h3 className="picker-item-title">{idea.title}</h3>
+                  {idea.rating && <span className="picker-rating">{idea.rating}★</span>}
                 </div>
                 {idea.description && <p className="picker-desc">{idea.description}</p>}
                 {idea.address && <p className="picker-addr">{idea.address}</p>}
