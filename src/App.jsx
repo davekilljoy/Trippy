@@ -127,6 +127,8 @@ export default function App() {
     await createCard(data);
     await loadCards();
     setModal(null);
+    // Re-fetch after background description + timing generation
+    setTimeout(loadCards, 5000);
   };
 
   const handleUpdate = async (id, data) => {
@@ -278,8 +280,9 @@ export default function App() {
               category: inferCategory(place) || 'attraction',
             });
             await loadCards();
-            // Re-fetch after background description generation completes
+            // Re-fetch after background description + timing generation completes
             setTimeout(loadCards, 4000);
+            setTimeout(loadCards, 8000);
           }}
           onEdit={(card) => setModal({ mode: 'edit', card })}
           onDelete={handleDelete}

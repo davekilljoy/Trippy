@@ -200,17 +200,18 @@ app.post('/api/cards', async (req, res) => {
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(card);
 
-  // Auto-generate description in background if none provided
-  if (!description && title) {
+  // Auto-generate description + timing in background if not provided
+  if (title && (!description || !timing)) {
     (async () => {
       try {
-        const prompt = `Write a concise 1-2 sentence description of "${title}"${address ? ` (${address})` : ''} in Japan for a trip planning board. Category: ${category || 'attraction'}. Be vivid and practical — what makes it worth visiting. No markdown, just plain text.`;
-        const desc = await callLLM([
-          { role: 'system', content: 'You are a concise Japan travel expert. Respond with only the description, nothing else.' },
-          { role: 'user', content: prompt },
-        ], 120);
-        if (desc) {
-          db.prepare("UPDATE cards SET description = ?, updated_at = datetime('now') WHERE id = ?").run(desc, card.id);
+        const context = await buildCardContext(card);
+        if (!description) {
+          const desc = await generateDescription(context);
+          if (desc) db.prepare("UPDATE cards SET description = ?, updated_at = datetime('now') WHERE id = ?").run(desc.trim(), card.id);
+        }
+        if (!timing) {
+          const tip = await generateTip(context);
+          if (tip) db.prepare("UPDATE cards SET timing = ?, updated_at = datetime('now') WHERE id = ?").run(tip.trim(), card.id);
         }
       } catch {}
     })();
@@ -564,7 +565,7 @@ async function placeDetails(placeId) {
   try {
     const params = new URLSearchParams({
       place_id: placeId,
-      fields: 'name,formatted_address,geometry,photos,types,website,rating,editorial_summary,url,opening_hours,price_level,business_status',
+      fields: 'name,formatted_address,geometry,photos,types,website,rating,editorial_summary,url,opening_hours,price_level,business_status,reviews',
       key: GOOGLE_MAPS_API_KEY,
     });
     const res = await fetch(`https://maps.googleapis.com/maps/api/place/details/json?${params}`);
@@ -809,6 +810,54 @@ async function tavilySearch(query, maxResults = 3) {
       .map(r => `[${r.title}]\n${(r.raw_content || r.content || '').slice(0, 1500)}`)
       .join('\n\n---\n\n');
   } catch { return ''; }
+}
+
+// --- Card context helper (Google + Tavily + reviews) ---
+
+async function buildCardContext(card) {
+  let placeSummary = '';
+  let reviewSnippets = '';
+  let placeTypes = '';
+  if (card.place_id) {
+    try {
+      const details = await placeDetails(card.place_id);
+      if (details?.editorial_summary?.overview) placeSummary = details.editorial_summary.overview;
+      if (details?.types) placeTypes = details.types.join(', ');
+      if (details?.reviews?.length) {
+        reviewSnippets = details.reviews
+          .slice(0, 5)
+          .map(r => r.text?.slice(0, 200))
+          .filter(Boolean)
+          .join(' | ');
+      }
+    } catch {}
+  }
+  const webContext = await tavilySearch(`${card.title} ${card.address || ''} Japan visitor tips`, 4);
+  return [
+    `"${card.title}"`,
+    card.address ? `at ${card.address}` : '',
+    `Category: ${card.category || 'attraction'}`,
+    placeTypes ? `Google types: ${placeTypes}` : '',
+    placeSummary ? `Google description: ${placeSummary}` : '',
+    reviewSnippets ? `\nGoogle reviews:\n${reviewSnippets}` : '',
+    webContext ? `\nWeb research:\n${webContext.slice(0, 2000)}` : '',
+  ].filter(Boolean).join('. ');
+}
+
+async function generateDescription(context) {
+  const prompt = `Write a concise 1-2 sentence description of ${context}. Describe what this place ACTUALLY IS based on its name, Google types, reviews and web info — do not guess or invent details. Be vivid and practical. No markdown, just plain text.`;
+  return callLLM([
+    { role: 'system', content: 'You are a concise Japan travel expert. Only state facts supported by the Google data, reviews and web research provided.' },
+    { role: 'user', content: prompt },
+  ], 120);
+}
+
+async function generateTip(context) {
+  const prompt = `${context}.\nBased on the reviews and place info above, give ONE specific insider tip (max 25 words) that a visitor would actually find useful. Extract something concrete from the reviews — a must-try item, a quirk of the place, what to avoid, or a practical detail. Do NOT give generic advice like "arrive early" or "expect queues". No markdown, just plain text.`;
+  return callLLM([
+    { role: 'system', content: 'You are a concise Japan travel expert. Base your tip on the actual reviews and place data provided. Never fabricate details.' },
+    { role: 'user', content: prompt },
+  ], 80);
 }
 
 // --- LLM + Image helpers ---
@@ -1065,21 +1114,47 @@ app.post('/api/cards/backfill-websites', async (req, res) => {
 // --- Backfill timing/tips via LLM ---
 
 app.post('/api/cards/backfill-timing', async (req, res) => {
+  const { reset, resetDescriptions } = req.body || {};
+  if (reset) {
+    db.prepare("UPDATE cards SET timing = NULL").run();
+  }
+  if (resetDescriptions) {
+    db.prepare("UPDATE cards SET description = NULL").run();
+  }
   const cards = db.prepare("SELECT * FROM cards WHERE (timing IS NULL OR timing = '') AND title IS NOT NULL").all();
   const results = [];
   const errors = [];
 
   for (const card of cards) {
     try {
-      const prompt = `For "${card.title}"${card.address ? ` (${card.address})` : ''} in Japan, category: ${card.category || 'attraction'}.
-Give a single short practical tip (1 sentence, max 20 words). Include things like: best time to visit, how long to spend, whether to book ahead, peak hours to avoid, or a useful insider tip. No markdown, just plain text.`;
-      const timing = await callLLM([
-        { role: 'system', content: 'You are a concise Japan travel expert. Respond with only the tip, nothing else.' },
-        { role: 'user', content: prompt },
-      ], 80);
-      if (timing) {
-        db.prepare("UPDATE cards SET timing = ?, updated_at = datetime('now') WHERE id = ?").run(timing.trim(), card.id);
-        results.push({ id: card.id, title: card.title, timing: timing.trim() });
+      const context = await buildCardContext(card);
+      const tip = await generateTip(context);
+      if (tip) {
+        db.prepare("UPDATE cards SET timing = ?, updated_at = datetime('now') WHERE id = ?").run(tip.trim(), card.id);
+        results.push({ id: card.id, title: card.title, timing: tip.trim() });
+      }
+    } catch (err) {
+      errors.push({ id: card.id, title: card.title, error: err.message });
+    }
+  }
+
+  res.json({ backfilled: results.length, total: cards.length, errors: errors.length, results });
+});
+
+// --- Backfill descriptions via LLM ---
+
+app.post('/api/cards/backfill-descriptions', async (req, res) => {
+  const cards = db.prepare("SELECT * FROM cards WHERE (description IS NULL OR description = '') AND title IS NOT NULL").all();
+  const results = [];
+  const errors = [];
+
+  for (const card of cards) {
+    try {
+      const context = await buildCardContext(card);
+      const desc = await generateDescription(context);
+      if (desc) {
+        db.prepare("UPDATE cards SET description = ?, updated_at = datetime('now') WHERE id = ?").run(desc.trim(), card.id);
+        results.push({ id: card.id, title: card.title, description: desc.trim() });
       }
     } catch (err) {
       errors.push({ id: card.id, title: card.title, error: err.message });
@@ -1107,9 +1182,12 @@ app.post('/api/cards/generate', async (req, res) => {
     ? `${children.length} children (ages: ${children.join(', ')})`
     : 'no children';
 
-  // Fetch existing card titles to avoid duplicates
+  // Fetch existing card titles + place_ids to avoid duplicates
   sendStatus('Checking existing ideas...');
-  const existing = db.prepare('SELECT title FROM cards').all().map(c => c.title);
+  const existingCards = db.prepare('SELECT title, place_id FROM cards').all();
+  const existing = existingCards.map(c => c.title);
+  const existingTitlesLower = new Set(existing.map(t => t.toLowerCase().trim()));
+  const existingPlaceIds = new Set(existingCards.map(c => c.place_id).filter(Boolean));
   const existingList = existing.length
     ? `\n\nWE ALREADY HAVE THESE — do NOT pick them or anything too similar:\n${existing.map(t => `- ${t}`).join('\n')}`
     : '';
@@ -1134,9 +1212,12 @@ app.post('/api/cards/generate', async (req, res) => {
       const nearbyData = await nearbyRes.json();
       let nearby = nearbyData.results || [];
 
-      // Filter out places we already have
-      const existingSet = new Set(existing.map(t => t.toLowerCase()));
-      nearby = nearby.filter(p => !existingSet.has((p.name || '').toLowerCase()));
+      // Filter out places we already have (by title or place_id)
+      nearby = nearby.filter(p => {
+        if (p.place_id && existingPlaceIds.has(p.place_id)) return false;
+        if (existingTitlesLower.has((p.name || '').toLowerCase().trim())) return false;
+        return true;
+      });
 
       if (!nearby.length) {
         return sendDone([]);
@@ -1324,6 +1405,7 @@ Return ONLY a JSON array of objects. No markdown, no explanation, no wrapping �
 
     // Enrich each idea via Google Places — drop ideas that can't be verified
     const results = [];
+    const seenPlaceIds = new Set();
     for (let i = 0; i < ideas.length; i++) {
       const idea = ideas[i];
       if (!idea.title) continue;
@@ -1334,6 +1416,13 @@ Return ONLY a JSON array of objects. No markdown, no explanation, no wrapping �
       const place = await enrichPlace(idea.title) || await autocompletePlaceSearch(idea.title);
 
       if (!place || !place.image_url) continue;
+
+      // Skip duplicates — match on place_id or normalized title
+      if (place.place_id && existingPlaceIds.has(place.place_id)) continue;
+      if (place.place_id && seenPlaceIds.has(place.place_id)) continue;
+      if (existingTitlesLower.has((idea.title || '').toLowerCase().trim())) continue;
+      if (place.name && existingTitlesLower.has(place.name.toLowerCase().trim())) continue;
+      if (place.place_id) seenPlaceIds.add(place.place_id);
 
       // Verify the place is within the viewport bounds or within 50km of destination
       if (place.lat && place.lng) {

@@ -20,11 +20,19 @@ const LEGEND_COLORS = {
   shopping: '#8b5e9b',
 };
 
-function categoryIcon(category, isAnchor) {
+function categoryIcon(category, isAnchor, isStarred) {
   if (isAnchor) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34">
       <circle cx="17" cy="17" r="15" fill="%239a7c3f" stroke="%23f2ece0" stroke-width="2"/>
       <text x="17" y="22" text-anchor="middle" fill="%23f2ece0" font-size="14">★</text>
+    </svg>`;
+    return `data:image/svg+xml;charset=UTF-8,${svg}`;
+  }
+  if (isStarred) {
+    const fill = CATEGORY_COLORS[category] || '%2312100e';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+      <circle cx="14" cy="14" r="13" fill="${fill}" stroke="%23f2ece0" stroke-width="2"/>
+      <text x="14" y="18.5" text-anchor="middle" fill="%23f2ece0" font-size="11">★</text>
     </svg>`;
     return `data:image/svg+xml;charset=UTF-8,${svg}`;
   }
@@ -267,22 +275,21 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
 
         {geoCards.map(card => {
           const isAnchor = card.id === anchorId;
+          const isStarred = !!card.starred;
           const dimmed = (anchorId && !isAnchor) || (pickerIdeas && pickerIdeas.length > 0);
+          const size = isAnchor ? 34 : isStarred ? 28 : 24;
           return (
             <Marker
               key={card.id}
               position={{ lat: Number(card.lat), lng: Number(card.lng) }}
               title={card.title}
               onClick={() => onSelectAnchor(card.id)}
-              opacity={dimmed ? 0.35 : 1}
+              opacity={dimmed && !isStarred ? 0.35 : 1}
+              zIndex={isAnchor ? 900 : isStarred ? 800 : 1}
               icon={{
-                url: categoryIcon(card.category, isAnchor),
-                scaledSize: isAnchor
-                  ? { width: 34, height: 34 }
-                  : { width: 24, height: 24 },
-                anchor: isAnchor
-                  ? { x: 17, y: 17 }
-                  : { x: 12, y: 12 },
+                url: categoryIcon(card.category, isAnchor, isStarred),
+                scaledSize: { width: size, height: size },
+                anchor: { x: size / 2, y: size / 2 },
               }}
             />
           );
