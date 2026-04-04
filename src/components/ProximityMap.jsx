@@ -93,7 +93,95 @@ function buildMapStyles(hiddenCategories) {
   return styles;
 }
 
-export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPlace, hiddenCategories }) {
+// Emit viewport bounds + area name on map idle
+function ViewportTracker({ onBoundsChange }) {
+  const map = useMap();
+  const timerRef = useRef(null);
+  const geocoderRef = useRef(null);
+
+  useEffect(() => {
+    if (!map || !onBoundsChange) return;
+
+    const handler = () => {
+      const bounds = map.getBounds();
+      if (!bounds) return;
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      const centerLat = (ne.lat() + sw.lat()) / 2;
+      const centerLng = (ne.lng() + sw.lng()) / 2;
+      const boundsObj = {
+        north: ne.lat(), south: sw.lat(),
+        east: ne.lng(), west: sw.lng(),
+        centerLat, centerLng,
+      };
+
+      // Debounced reverse geocode for area name
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(async () => {
+        try {
+          if (!geocoderRef.current) {
+            geocoderRef.current = new google.maps.Geocoder();
+          }
+          const res = await geocoderRef.current.geocode({ location: { lat: centerLat, lng: centerLng } });
+          const results = res.results || [];
+          // Find locality or sublocality or admin area
+          const locality = results.find(r => r.types.includes('locality'))
+            || results.find(r => r.types.includes('sublocality'))
+            || results.find(r => r.types.includes('administrative_area_level_1'))
+            || results.find(r => r.types.includes('postal_town'));
+          const areaName = locality
+            ? locality.address_components.find(c => c.types.includes('locality'))?.long_name
+              || locality.address_components.find(c => c.types.includes('sublocality'))?.long_name
+              || locality.address_components.find(c => c.types.includes('administrative_area_level_1'))?.long_name
+              || locality.formatted_address.split(',')[0]
+            : '';
+          onBoundsChange({ ...boundsObj, areaName });
+        } catch {
+          onBoundsChange({ ...boundsObj, areaName: '' });
+        }
+      }, 400);
+    };
+
+    const listener = google.maps.event.addListener(map, 'idle', handler);
+    // Fire once immediately
+    handler();
+    return () => {
+      google.maps.event.removeListener(listener);
+      clearTimeout(timerRef.current);
+    };
+  }, [map, onBoundsChange]);
+
+  return null;
+}
+
+function numberedIcon(num) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40">
+    <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 24 16 24s16-12 16-24C32 7.2 24.8 0 16 0z" fill="%239a7c3f"/>
+    <circle cx="16" cy="15" r="11" fill="%23f2ece0"/>
+    <text x="16" y="19.5" text-anchor="middle" fill="%2312100e" font-size="12" font-weight="700" font-family="sans-serif">${num}</text>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${svg}`;
+}
+
+// Fit map to picker ideas when they appear
+function FitPickerBounds({ ideas }) {
+  const map = useMap();
+  const prevCountRef = useRef(0);
+  useEffect(() => {
+    if (!map || !ideas || ideas.length === 0) { prevCountRef.current = 0; return; }
+    const geoIdeas = ideas.filter(i => i.lat && i.lng);
+    if (geoIdeas.length === 0) { prevCountRef.current = 0; return; }
+    // Only refit when ideas change (new count)
+    if (geoIdeas.length === prevCountRef.current) return;
+    prevCountRef.current = geoIdeas.length;
+    const bounds = new google.maps.LatLngBounds();
+    geoIdeas.forEach(i => bounds.extend({ lat: Number(i.lat), lng: Number(i.lng) }));
+    map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
+  }, [map, ideas]);
+  return null;
+}
+
+export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPlace, hiddenCategories, onBoundsChange, pickerIdeas }) {
   const [poiPlace, setPoiPlace] = useState(null);  // { ...placeData, _pos: {lat, lng} }
   const [poiLoading, setPoiLoading] = useState(null); // {lat, lng} while loading
   const [poiAdding, setPoiAdding] = useState(false);
@@ -152,7 +240,7 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
 
   const center = positions.length > 0 ? positions[0] : { lat: 35.68, lng: 139.76 };
 
-  if (geoCards.length === 0) {
+  if (geoCards.length === 0 && (!pickerIdeas || pickerIdeas.length === 0)) {
     return (
       <div className="prox-empty">
         <p>No cards with locations to show on the map.</p>
@@ -175,10 +263,11 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
       >
         <FitBounds positions={positions} />
         <PanToAnchor anchorCard={anchorCard} />
+        <ViewportTracker onBoundsChange={onBoundsChange} />
 
         {geoCards.map(card => {
           const isAnchor = card.id === anchorId;
-          const dimmed = anchorId && !isAnchor;
+          const dimmed = (anchorId && !isAnchor) || (pickerIdeas && pickerIdeas.length > 0);
           return (
             <Marker
               key={card.id}
@@ -195,6 +284,25 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
                   ? { x: 17, y: 17 }
                   : { x: 12, y: 12 },
               }}
+            />
+          );
+        })}
+
+        {/* Numbered markers for picker ideas */}
+        {pickerIdeas && <FitPickerBounds ideas={pickerIdeas} />}
+        {pickerIdeas && pickerIdeas.map((idea, i) => {
+          if (!idea.lat || !idea.lng) return null;
+          return (
+            <Marker
+              key={`picker-${i}`}
+              position={{ lat: Number(idea.lat), lng: Number(idea.lng) }}
+              title={`${i + 1}. ${idea.title}`}
+              icon={{
+                url: numberedIcon(i + 1),
+                scaledSize: { width: 32, height: 40 },
+                anchor: { x: 16, y: 40 },
+              }}
+              zIndex={1000 + i}
             />
           );
         })}

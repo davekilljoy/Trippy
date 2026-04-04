@@ -6,7 +6,7 @@ import './Board.css';
 
 const CATEGORIES = ['attraction', 'restaurant', 'hotel', 'experience', 'transport', 'shopping'];
 
-export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onStar, onAnchorChange }) {
+export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onStar, onAnchorChange, onShowMapChange, onBoundsChange, pickerIdeas }) {
   const [disabledCats, setDisabledCats] = useState(new Set());
   const [starredOnly, setStarredOnly] = useState(false);
   const [showMap, setShowMap] = useState(true);
@@ -21,6 +21,11 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
     const card = anchorId ? cards.find(c => c.id === anchorId) : null;
     onAnchorChange(card || null);
   }, [anchorId, cards, onAnchorChange]);
+
+  // Notify parent of map visibility
+  useEffect(() => {
+    onShowMapChange?.(showMap);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -86,8 +91,12 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
   }, []);
 
   const handleToggleMap = useCallback(() => {
-    setShowMap(m => !m);
-  }, []);
+    setShowMap(m => {
+      const next = !m;
+      onShowMapChange?.(next);
+      return next;
+    });
+  }, [onShowMapChange]);
 
   const handleClearNear = useCallback(() => {
     setAnchorId(null);
@@ -216,6 +225,8 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
               onSelectAnchor={handleSelectAnchor}
               onAddPlace={onAddPlace}
               hiddenCategories={disabledCatsArray}
+              onBoundsChange={onBoundsChange}
+              pickerIdeas={pickerIdeas}
             />
           </div>
         </div>

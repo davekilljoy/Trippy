@@ -5,7 +5,7 @@ import ItineraryPanel from './components/ItineraryPanel.jsx';
 import CardModal from './components/CardModal.jsx';
 import IdeaPicker from './components/IdeaPicker.jsx';
 import TripDetailsModal from './components/TripDetailsModal.jsx';
-import { fetchCards, fetchSettings, saveSettings, createCard, updateCard, deleteCard, toggleStar, bulkCreateCards, generateIdeas, fetchFlights, createFlight, updateFlight, deleteFlight } from './lib/api.js';
+import { fetchCards, fetchSettings, saveSettings, createCard, updateCard, deleteCard, toggleStar, bulkCreateCards, generateIdeas, fetchFlights, createFlight, updateFlight, deleteFlight, backfillTiming } from './lib/api.js';
 import { inferCategory } from './lib/places.js';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -53,6 +53,8 @@ export default function App() {
 
   // Anchor card for proximity context (set by Board)
   const [anchorCard, setAnchorCard] = useState(null);
+  const [mapVisible, setMapVisible] = useState(true);
+  const [mapBounds, setMapBounds] = useState(null); // { north, south, east, west, centerLat, centerLng, areaName }
 
   // Generate bar + picker state
   const [genPrompt, setGenPrompt] = useState('');
@@ -83,6 +85,10 @@ export default function App() {
       if (s.children !== undefined) setChildren(s.children);
       setSettingsLoaded(true);
     });
+    // Backfill timing for cards that don't have it
+    backfillTiming().then(r => {
+      if (r.backfilled > 0) loadCards();
+    }).catch(() => {});
   }, [loadCards, loadFlights]);
 
   // Save settings to server on change (debounced)
@@ -145,6 +151,11 @@ export default function App() {
       params.nearLat = anchorCard.lat;
       params.nearLng = anchorCard.lng;
       params.nearName = anchorCard.title;
+    } else if (mapBounds && mapVisible) {
+      params.boundsNorth = mapBounds.north;
+      params.boundsSouth = mapBounds.south;
+      params.boundsEast = mapBounds.east;
+      params.boundsWest = mapBounds.west;
     }
     return params;
   };
@@ -274,6 +285,9 @@ export default function App() {
           onDelete={handleDelete}
           onStar={handleStar}
           onAnchorChange={setAnchorCard}
+          onShowMapChange={setMapVisible}
+          onBoundsChange={setMapBounds}
+          pickerIdeas={pickerIdeas}
         />
       ) : (
         <ItineraryPanel
@@ -319,12 +333,13 @@ export default function App() {
           onAdd={handleAddSelected}
           onFollowUp={handleFollowUp}
           onClose={() => setPickerIdeas(null)}
+          mapVisible={mapVisible}
         />
       )}
 
       {/* Floating generate bar — only on Board view */}
       {view === 'board' && !pickerIdeas && (
-        <div className="gen-bar">
+        <div className={`gen-bar ${mapVisible ? 'gen-bar--over-map' : ''}`}>
           {genLoading ? (
             <div className="gen-bar-loading">
               <div className="gen-spinner" />
@@ -334,14 +349,14 @@ export default function App() {
             <form className="gen-bar-form" onSubmit={handleGenerate}>
               {anchorCard && (
                 <span className="gen-near-pill">
-                  Near {anchorCard.title.length > 20 ? anchorCard.title.slice(0, 20) + '…' : anchorCard.title}
+                  {anchorCard.title.length > 20 ? anchorCard.title.slice(0, 20) + '…' : anchorCard.title}
                 </span>
               )}
               <input
                 type="text"
                 value={genPrompt}
                 onChange={e => setGenPrompt(e.target.value)}
-                placeholder={anchorCard ? `Ideas near ${anchorCard.title.split(' ').slice(0, 3).join(' ')}...` : 'Find itinerary ideas...'}
+                placeholder={anchorCard ? `Ideas near ${anchorCard.title.split(' ').slice(0, 3).join(' ')}...` : mapBounds?.areaName ? `Find ideas in ${mapBounds.areaName}...` : 'Find itinerary ideas...'}
                 className="gen-input"
               />
               <button type="submit" className="gen-submit" disabled={!genPrompt.trim()}>Generate</button>

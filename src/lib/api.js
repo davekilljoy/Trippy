@@ -124,6 +124,12 @@ export async function geocodeCards() {
   return res.json();
 }
 
+export async function backfillTiming() {
+  const res = await fetch(`${BASE}/cards/backfill-timing`, { method: 'POST' });
+  if (!res.ok) return {};
+  return res.json();
+}
+
 export async function bulkCreateCards(cards) {
   const res = await fetch(`${BASE}/cards/bulk`, {
     method: 'POST',

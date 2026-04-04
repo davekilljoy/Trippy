@@ -56,7 +56,12 @@ export default function IdeaCard({ card, onEdit, onDelete, onStar, distanceBadge
           <p className="card-distance">{distanceBadge}</p>
         )}
         {card.description && <p className="card-desc">{card.description}</p>}
-        {card.timing && <p className="card-timing">{card.timing}</p>}
+        {card.timing && (
+          <p className="card-timing">
+            <span className="card-timing-icon">i</span>
+            {card.timing}
+          </p>
+        )}
 
         <div className="card-notes">
           {card.david_note && (

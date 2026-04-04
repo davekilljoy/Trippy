@@ -7,6 +7,15 @@
   justify-content: flex-end;
 }
 
+/* Map mode: overlay the right half (map area), bottom half */
+.picker-overlay--map {
+  left: 50%;
+  right: 0;
+  justify-content: flex-end;
+  background: none;
+  pointer-events: none;
+}
+
 .picker-panel {
   background: var(--card-bg);
   border-top: 1px solid var(--border);
@@ -15,6 +24,17 @@
   display: flex;
   flex-direction: column;
   animation: picker-slide-up 0.25s ease-out;
+}
+
+/* Map mode: bottom half of the map area */
+.picker-panel--map {
+  pointer-events: auto;
+  max-height: none;
+  height: 50%;
+  border-bottom: none;
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+  animation: none;
 }
 
 @keyframes picker-slide-up {
@@ -121,6 +141,21 @@
 .picker-item.selected .picker-check {
   background: var(--ink);
   border-color: var(--ink);
+}
+
+.picker-num {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--paper);
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
 }
 
 .picker-img {
@@ -323,6 +358,23 @@
 
 .picker-add:disabled {
   opacity: 0.3;
+}
+
+@media (max-width: 900px) {
+  .picker-overlay--map {
+    left: 0;
+    justify-content: flex-end;
+    pointer-events: auto;
+  }
+
+  .picker-panel--map {
+    max-height: 75vh;
+    height: auto;
+    border-bottom: none;
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.12);
+    animation: picker-slide-up 0.25s ease-out;
+  }
 }
 
 @media (max-width: 700px) {

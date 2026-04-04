@@ -6,7 +6,7 @@ const CATEGORY_ICONS = {
   experience: '🎋', transport: '🚅', shopping: '🛍',
 };
 
-export default function IdeaPicker({ ideas, onAdd, onFollowUp, onClose, loading, followUpLoading }) {
+export default function IdeaPicker({ ideas, onAdd, onFollowUp, onClose, loading, followUpLoading, mapVisible }) {
   const [selected, setSelected] = useState(() => new Set(ideas.map((_, i) => i)));
   const [followUp, setFollowUp] = useState('');
 
@@ -34,8 +34,8 @@ export default function IdeaPicker({ ideas, onAdd, onFollowUp, onClose, loading,
   };
 
   return (
-    <div className="picker-overlay">
-      <div className="picker-panel">
+    <div className={`picker-overlay ${mapVisible ? 'picker-overlay--map' : ''}`}>
+      <div className={`picker-panel ${mapVisible ? 'picker-panel--map' : ''}`}>
         <div className="picker-header">
           <h2 className="picker-title">Generated Ideas</h2>
           <div className="picker-actions-top">
@@ -55,6 +55,7 @@ export default function IdeaPicker({ ideas, onAdd, onFollowUp, onClose, loading,
               <div className="picker-check">
                 {selected.has(i) ? '✓' : ''}
               </div>
+              <span className="picker-num">{i + 1}</span>
               <div className="picker-img">
                 {idea.image_url ? (
                   <img src={idea.image_url} alt={idea.title} />

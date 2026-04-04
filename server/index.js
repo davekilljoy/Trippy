@@ -1062,10 +1062,37 @@ app.post('/api/cards/backfill-websites', async (req, res) => {
   res.json({ backfilled: results.length, total: cards.length + noPlaceId.length, results });
 });
 
+// --- Backfill timing/tips via LLM ---
+
+app.post('/api/cards/backfill-timing', async (req, res) => {
+  const cards = db.prepare("SELECT * FROM cards WHERE (timing IS NULL OR timing = '') AND title IS NOT NULL").all();
+  const results = [];
+  const errors = [];
+
+  for (const card of cards) {
+    try {
+      const prompt = `For "${card.title}"${card.address ? ` (${card.address})` : ''} in Japan, category: ${card.category || 'attraction'}.
+Give a single short practical tip (1 sentence, max 20 words). Include things like: best time to visit, how long to spend, whether to book ahead, peak hours to avoid, or a useful insider tip. No markdown, just plain text.`;
+      const timing = await callLLM([
+        { role: 'system', content: 'You are a concise Japan travel expert. Respond with only the tip, nothing else.' },
+        { role: 'user', content: prompt },
+      ], 80);
+      if (timing) {
+        db.prepare("UPDATE cards SET timing = ?, updated_at = datetime('now') WHERE id = ?").run(timing.trim(), card.id);
+        results.push({ id: card.id, title: card.title, timing: timing.trim() });
+      }
+    } catch (err) {
+      errors.push({ id: card.id, title: card.title, error: err.message });
+    }
+  }
+
+  res.json({ backfilled: results.length, total: cards.length, errors: errors.length, results });
+});
+
 // --- Generate ideas via LLM ---
 
 app.post('/api/cards/generate', async (req, res) => {
-  const { destination, dateFrom, dateTo, adults, children, prompt, nearLat, nearLng, nearName } = req.body;
+  const { destination, dateFrom, dateTo, adults, children, prompt, nearLat, nearLng, nearName, boundsNorth, boundsSouth, boundsEast, boundsWest } = req.body;
 
   // SSE setup
   res.setHeader('Content-Type', 'text/event-stream');
@@ -1197,10 +1224,12 @@ No markdown, no explanation — just the raw JSON array.`;
 
   // ===== NORMAL MODE: LLM generates → Google verifies =====
 
-  // Geocode destination for location verification
+  // Use viewport bounds if provided, otherwise geocode destination
+  const hasBounds = boundsNorth != null && boundsSouth != null && boundsEast != null && boundsWest != null;
   let destCenter = null;
-  if (dest) {
-    // Use first city if comma-separated (e.g. "Tokyo, Kyoto" → "Tokyo")
+  if (hasBounds) {
+    destCenter = { lat: (boundsNorth + boundsSouth) / 2, lng: (boundsEast + boundsWest) / 2 };
+  } else if (dest) {
     const primaryCity = dest.split(',')[0].trim();
     const geo = await geocode(primaryCity);
     if (geo) destCenter = geo;
@@ -1243,6 +1272,10 @@ No markdown, no explanation — just the raw JSON array.`;
   );
   const webBlock = webContext ? `\n\nWEB RESEARCH (use this for current, accurate suggestions):\n${webContext}` : '';
 
+  const boundsHint = hasBounds
+    ? `\n- Map viewport: ${boundsSouth.toFixed(4)}–${boundsNorth.toFixed(4)}°N, ${boundsWest.toFixed(4)}–${boundsEast.toFixed(4)}°E\n\nIMPORTANT: ALL suggestions MUST be within or very near the map viewport shown above. Focus on this specific area.`
+    : `\n\nIMPORTANT: ALL suggestions MUST be located in ${dest}. Do NOT suggest places in other cities or regions.`;
+
   const llmPrompt = `You are a Japan travel expert. Generate trip ideas for a group visiting Japan.
 
 TRIP DETAILS:
@@ -1252,8 +1285,7 @@ TRIP DETAILS:
 - Preferences: ${userPrompt || 'No specific preferences given'}${existingList}${webBlock}
 
 ${catInstruction}
-
-IMPORTANT: ALL suggestions MUST be located in ${dest}. Do NOT suggest places in other cities or regions.
+${boundsHint}
 
 For EACH idea return a JSON object with these fields:
 - "title": short name of the place (the real business name)
@@ -1303,13 +1335,23 @@ Return ONLY a JSON array of objects. No markdown, no explanation, no wrapping �
 
       if (!place || !place.image_url) continue;
 
-      // Verify the place is actually near the destination (within 50km)
-      if (destCenter && place.lat && place.lng) {
-        const dLat = (place.lat - destCenter.lat) * Math.PI / 180;
-        const dLng = (place.lng - destCenter.lng) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) ** 2 + Math.cos(destCenter.lat * Math.PI / 180) * Math.cos(place.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-        const distKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        if (distKm > 50) continue; // Not in the right city
+      // Verify the place is within the viewport bounds or within 50km of destination
+      if (place.lat && place.lng) {
+        if (hasBounds) {
+          // Generous padding (~20%) around viewport bounds
+          const latPad = (boundsNorth - boundsSouth) * 0.2;
+          const lngPad = (boundsEast - boundsWest) * 0.2;
+          if (place.lat < boundsSouth - latPad || place.lat > boundsNorth + latPad ||
+              place.lng < boundsWest - lngPad || place.lng > boundsEast + lngPad) {
+            continue; // Outside viewport
+          }
+        } else if (destCenter) {
+          const dLat = (place.lat - destCenter.lat) * Math.PI / 180;
+          const dLng = (place.lng - destCenter.lng) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) ** 2 + Math.cos(destCenter.lat * Math.PI / 180) * Math.cos(place.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+          const distKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          if (distKm > 50) continue;
+        }
       }
 
       results.push({
