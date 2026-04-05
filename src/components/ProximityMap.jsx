@@ -111,17 +111,47 @@ const CATEGORY_TO_POI_TYPES = {
   transport: ['transit'],
 };
 
-function buildMapStyles(hiddenCategories) {
-  if (!hiddenCategories || hiddenCategories.length === 0) return [];
+// Clean base: hide road icons/signs, transit labels, and non-POI clutter
+const CLEAN_MAP_STYLES = [
+  { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road.highway', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'labels.text', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.land_parcel', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.neighborhood', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+];
 
-  const styles = [];
-  for (const cat of hiddenCategories) {
-    const poiTypes = CATEGORY_TO_POI_TYPES[cat] || [];
-    for (const type of poiTypes) {
-      styles.push(
-        { featureType: type, elementType: 'labels', stylers: [{ visibility: 'off' }] },
-        { featureType: type, elementType: 'geometry', stylers: [{ visibility: 'off' }] },
-      );
+const DARK_MAP_STYLES = [
+  ...CLEAN_MAP_STYLES,
+  { elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a2e' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#8888a0' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#2a2a40' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#252540' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a1a2e' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#2d2d50' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#6a6a80' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e0e1a' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4a4a60' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1e1e35' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#7a7a90' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1a2e1a' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1e1e35' }] },
+];
+
+function buildMapStyles(hiddenCategories) {
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  const styles = isDark ? [...DARK_MAP_STYLES] : [...CLEAN_MAP_STYLES];
+
+  if (hiddenCategories && hiddenCategories.length > 0) {
+    for (const cat of hiddenCategories) {
+      const poiTypes = CATEGORY_TO_POI_TYPES[cat] || [];
+      for (const type of poiTypes) {
+        styles.push(
+          { featureType: type, elementType: 'labels', stylers: [{ visibility: 'off' }] },
+          { featureType: type, elementType: 'geometry', stylers: [{ visibility: 'off' }] },
+        );
+      }
     }
   }
   return styles;
