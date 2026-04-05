@@ -6,7 +6,19 @@ import './Board.css';
 
 const CATEGORIES = ['attraction', 'restaurant', 'hotel', 'experience', 'transport', 'shopping'];
 
+function useIsMobile(breakpoint = 700) {
+  const [mobile, setMobile] = useState(() => window.innerWidth <= breakpoint);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handler = (e) => setMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [breakpoint]);
+  return mobile;
+}
+
 export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onStar, onAnchorChange, onShowMapChange, onBoundsChange, pickerIdeas }) {
+  const isMobile = useIsMobile();
   const [disabledCats, setDisabledCats] = useState(new Set());
   const [starredOnly, setStarredOnly] = useState(false);
   const [showMap, setShowMap] = useState(true);
@@ -130,6 +142,121 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
     })
   );
 
+  // On mobile, map is always on
+  const effectiveShowMap = isMobile || showMap;
+
+  // Mobile: render toolbar + map-first layout with bottom panel
+  if (isMobile) {
+    return (
+      <div className="board board--mobile">
+        {/* Toolbar: + button right-aligned, filters scrollable below */}
+        <div className="board-toolbar-mobile">
+          <div className="board-toolbar-top">
+            <div className="filter-pills filter-pills--scroll">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  className={`pill ${disabledCats.has(cat) ? '' : 'active'}`}
+                  onClick={() => toggleCat(cat)}
+                >
+                  {cat}
+                </button>
+              ))}
+              <button
+                className={`pill pill-near ${anchorId ? 'active' : ''}`}
+                onClick={() => anchorId ? handleClearNear() : setNearOpen(o => !o)}
+              >
+                {anchorCard
+                  ? <>Near {anchorCard.title.length > 12 ? anchorCard.title.slice(0, 12) + '…' : anchorCard.title}</>
+                  : 'Nearest'
+                }
+                {anchorId && <span className="near-clear" onClick={(e) => { e.stopPropagation(); handleClearNear(); }}> ×</span>}
+              </button>
+              <button
+                className={`pill pill-starred ${starredOnly ? 'active' : ''}`}
+                onClick={() => setStarredOnly(s => !s)}
+              >
+                ★ Starred
+              </button>
+            </div>
+            <button className="add-btn-mobile" onClick={onAdd}>+</button>
+          </div>
+        </div>
+
+        {/* Full-screen map */}
+        <div className="board-map-full">
+          <ProximityMap
+            cards={catFiltered}
+            anchorId={anchorId}
+            onSelectAnchor={handleSelectAnchor}
+            onAddPlace={onAddPlace}
+            hiddenCategories={disabledCatsArray}
+            onBoundsChange={onBoundsChange}
+            pickerIdeas={pickerIdeas}
+          />
+        </div>
+
+        {/* Bottom panel — slides up when a marker is tapped */}
+        {anchorId && (
+          <div className="mobile-panel">
+            <div className="mobile-panel-handle" onClick={handleClearNear}>
+              <span className="mobile-panel-bar" />
+            </div>
+            <div className="mobile-panel-header">
+              <span className="mobile-panel-title">
+                Near {anchorCard?.title || 'selected'}
+              </span>
+              <div className="near-radius">
+                <input
+                  type="range"
+                  min={0.3}
+                  max={10}
+                  step={0.1}
+                  value={radiusKm}
+                  onChange={e => setRadiusKm(Number(e.target.value))}
+                  className="near-slider"
+                />
+                <span className="near-radius-label">{radiusKm.toFixed(1)}km</span>
+              </div>
+            </div>
+            <div className="mobile-panel-list">
+              {displayCards.filter(c => c.id !== anchorId).length === 0 ? (
+                <div className="board-empty"><p>No places within this radius.</p></div>
+              ) : (
+                displayCards.filter(c => c.id !== anchorId).map(card => {
+                  const dist = card._dist != null && card._dist > 0 ? card._dist : null;
+                  const badge = dist != null ? `${formatDistance(dist)} · ${formatTravelTime(dist)}` : null;
+                  return (
+                    <div
+                      key={card.id}
+                      className="mobile-panel-item"
+                      onClick={() => onEdit(card)}
+                    >
+                      {card.image_url && <img src={card.image_url} alt="" className="mobile-panel-img" />}
+                      <div className="mobile-panel-info">
+                        <span className="mobile-panel-name">{card.title}</span>
+                        {badge && <span className="mobile-panel-dist">{badge}</span>}
+                        {card.timing && <span className="mobile-panel-tip">{card.timing}</span>}
+                        <span className="mobile-panel-cat">{card.category}</span>
+                      </div>
+                      <button
+                        className="mobile-panel-star"
+                        onClick={(e) => { e.stopPropagation(); onStar(card.id); }}
+                      >
+                        {card.starred ? '★' : '☆'}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Desktop layout (unchanged)
   return (
     <div className={`board ${showMap ? 'board--with-map' : ''}`}>
       <div className="board-toolbar">

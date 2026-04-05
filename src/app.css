@@ -304,42 +304,59 @@ a:hover {
 /* --- Mobile --- */
 @media (max-width: 700px) {
   .app-header {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 0.8rem 1rem;
-    gap: 0.5rem;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3rem 0.5rem;
+    gap: 0.3rem;
   }
 
   .app-title {
-    font-size: 1.2rem;
-    text-align: center;
+    display: none;
   }
 
-  .app-title span {
-    display: none;
+  /* Nav comes first visually on mobile */
+  .app-nav {
+    order: -1;
+    flex-shrink: 0;
+  }
+
+  .nav-btn {
+    font-size: 0.65rem;
+    padding: 0.3rem 0.7rem;
   }
 
   .header-details {
-    justify-content: center;
-    gap: 0.35rem;
+    gap: 0.25rem;
+    padding: 0;
+    flex-shrink: 0;
   }
 
-  .header-sep {
+  .header-chip--dates {
+    font-size: 0.7rem;
+  }
+
+  /* On mobile, hide everything except date range */
+  .header-details .header-chip:not(.header-chip--dates),
+  .header-details .header-sep,
+  .header-details .header-edit-hint {
     display: none;
   }
 
-  .app-nav {
-    justify-content: center;
-  }
-
   .gen-bar {
-    width: 95%;
-    bottom: 0.6rem;
+    width: 92%;
+    bottom: 0.5rem;
+    padding: 0.3rem 0.3rem 0.3rem 0.8rem;
   }
 
   .gen-bar--over-map {
     left: 50%;
     max-width: 600px;
+  }
+
+  /* Hide gen bar when mobile panel is open */
+  .board--mobile .mobile-panel ~ .gen-bar {
+    display: none;
   }
 
   /* Prevent iOS zoom on focus — inputs must be >= 16px */

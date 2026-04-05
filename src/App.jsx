@@ -212,20 +212,22 @@ export default function App() {
       <header className="app-header">
         <h1 className="app-title">Japlanner <span>日本の旅</span></h1>
         <div className="header-details" onClick={() => setShowTripModal(true)}>
+          {/* Date range — always visible on mobile */}
+          <span className="header-chip header-chip--dates">
+            {dateFrom && dateTo
+              ? <>{dateFrom} — {dateTo}</>
+              : countDays(dateFrom, dateTo)
+                ? <>{countDays(dateFrom, dateTo)} days</>
+                : <span className="header-muted">No dates</span>
+            }
+          </span>
+          <span className="header-sep">·</span>
           {/* Arrive */}
           <span className="header-chip">
             <span className="header-label">Arrive</span>
             {outboundFlight
               ? <>{outboundFlight.arrival_airport || '?'} {formatFlightTime(outboundFlight.arrival_time) || '—'}</>
               : <span className="header-muted">—</span>
-            }
-          </span>
-          <span className="header-sep">·</span>
-          {/* Days */}
-          <span className="header-chip">
-            {countDays(dateFrom, dateTo)
-              ? <>{countDays(dateFrom, dateTo)} days</>
-              : <span className="header-muted">— days</span>
             }
           </span>
           <span className="header-sep">·</span>
