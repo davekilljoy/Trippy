@@ -25,7 +25,7 @@
 }
 
 .sidebar-cards.drag-over {
-  background: color-mix(in srgb, var(--gold) 8%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .sidebar-drag-card {
@@ -38,7 +38,7 @@
 }
 
 .sidebar-drag-card:hover {
-  border-color: var(--gold);
+  border-color: var(--accent);
 }
 
 .sidebar-drag-card.dragging {
@@ -59,7 +59,7 @@
 /* Drag overlay preview */
 .drag-preview {
   background: var(--card-bg);
-  border: 2px solid var(--gold);
+  border: 2px solid var(--accent);
   border-radius: var(--radius);
   box-shadow: 0 4px 16px rgba(0,0,0,0.15);
   padding: 0.3rem 0.5rem;

@@ -1,13 +1,22 @@
 import { useState } from 'react';
+import { Star, Ellipsis, Info, Landmark, UtensilsCrossed, Hotel, Sparkles, TrainFront, ShoppingBag, MapPin } from 'lucide-react';
 import './IdeaCard.css';
 
 const CATEGORY_ICONS = {
-  attraction: '⛩',
-  restaurant: '🍜',
-  hotel: '🏨',
-  experience: '🎋',
-  transport: '🚅',
-  shopping: '🛍',
+  attraction: Landmark,
+  restaurant: UtensilsCrossed,
+  hotel: Hotel,
+  experience: Sparkles,
+  transport: TrainFront,
+  shopping: ShoppingBag,
+};
+
+const CATEGORY_COLORS = {
+  attraction: '#12100e',
+  restaurant: '#b5291c',
+  hotel: 'var(--accent)',
+  experience: '#5b7a3a',
+  shopping: '#8b5e9b',
 };
 
 export default function IdeaCard({ card, onEdit, onDelete, onStar, distanceBadge, isAnchor }) {
@@ -24,16 +33,18 @@ export default function IdeaCard({ card, onEdit, onDelete, onStar, distanceBadge
           <img src={card.image_url} alt={card.title} loading="lazy" />
         ) : (
           <div className="card-image-placeholder">
-            <span>{CATEGORY_ICONS[card.category] || '📍'}</span>
+            {(() => { const Icon = CATEGORY_ICONS[card.category] || MapPin; return <Icon size={32} />; })()}
           </div>
         )}
-        <span className="card-category-badge">{card.category}</span>
+        <span className="card-category-badge" style={{ background: CATEGORY_COLORS[card.category] || 'var(--ink)' }}>
+          {(() => { const Icon = CATEGORY_ICONS[card.category] || MapPin; return <Icon size={12} />; })()}
+        </span>
         {card.rating && <span className="card-rating-badge">{card.rating}★</span>}
         <button
           className={`card-star-btn ${card.starred ? 'active' : ''}`}
           onClick={(e) => { e.stopPropagation(); onStar(); }}
         >
-          {card.starred ? '★' : '☆'}
+          <Star size={14} fill={card.starred ? 'currentColor' : 'none'} />
         </button>
       </div>
 
@@ -41,7 +52,7 @@ export default function IdeaCard({ card, onEdit, onDelete, onStar, distanceBadge
         <div className="card-header">
           <h3 className="card-title">{title}</h3>
           <div className="card-menu-wrap">
-            <button className="card-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
+            <button className="card-menu-btn" onClick={() => setMenuOpen(!menuOpen)}><Ellipsis size={16} /></button>
             {menuOpen && (
               <div className="card-menu">
                 <button onClick={() => { onEdit(); setMenuOpen(false); }}>Edit</button>
@@ -58,7 +69,7 @@ export default function IdeaCard({ card, onEdit, onDelete, onStar, distanceBadge
         {card.description && <p className="card-desc">{card.description}</p>}
         {card.timing && (
           <p className="card-timing">
-            <span className="card-timing-icon">i</span>
+            <Info size={14} className="card-timing-icon" />
             {card.timing}
           </p>
         )}

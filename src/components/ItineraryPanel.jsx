@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Star, X } from 'lucide-react';
 import {
   createItinerary, fetchItineraries, fetchItinerary, deleteItinerary,
   proposeItinerary, finalizeItinerary, loadDayRoutes, generateSkeleton,
@@ -242,7 +243,7 @@ export default function ItineraryPanel({ starredCards, pendingCards, flights, on
                 <button
                   className="version-delete"
                   onClick={e => { e.stopPropagation(); handleDeleteVersion(v.id); }}
-                >×</button>
+                ><X size={12} /></button>
               </div>
             ))}
           </div>
@@ -274,7 +275,7 @@ export default function ItineraryPanel({ starredCards, pendingCards, flights, on
 
         <div className="sidebar-section">
           <h3 className="sidebar-heading">
-            ★ Starred <span className="count-badge">{starredCards.filter(c => c.category !== 'hotel').length}</span>
+            <Star size={12} fill="currentColor" /> Starred <span className="count-badge">{starredCards.filter(c => c.category !== 'hotel').length}</span>
           </h3>
           {starredCards.filter(c => c.category !== 'hotel').length === 0 ? (
             <p className="sidebar-empty">No starred items yet.</p>

@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { APIProvider } from '@vis.gl/react-google-maps';
+import { Palette, Sun, Moon, Flame } from 'lucide-react';
 import Board from './components/Board.jsx';
 import ItineraryPanel from './components/ItineraryPanel.jsx';
 import CardModal from './components/CardModal.jsx';
@@ -36,7 +37,61 @@ function formatTravellers(adults, children) {
   return parts.join(', ');
 }
 
+const THEMES = [
+  { id: 'warm', label: 'Warm', icon: Flame },
+  { id: 'minimal', label: 'Minimal', icon: Sun },
+  { id: 'dark', label: 'Dark', icon: Moon },
+];
+
+function ThemePicker({ theme, setTheme }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const current = THEMES.find(t => t.id === theme) || THEMES[0];
+
+  return (
+    <div className="theme-picker" ref={ref}>
+      <button className="theme-picker-btn" onClick={() => setOpen(o => !o)} title="Theme">
+        <current.icon size={16} />
+      </button>
+      {open && (
+        <div className="theme-picker-menu">
+          {THEMES.map(t => (
+            <button
+              key={t.id}
+              className={`theme-picker-option ${theme === t.id ? 'active' : ''}`}
+              onClick={() => { setTheme(t.id); setOpen(false); }}
+            >
+              <t.icon size={14} /> {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'warm');
+
+  useEffect(() => {
+    if (theme === 'warm') {
+      delete document.documentElement.dataset.theme;
+    } else {
+      document.documentElement.dataset.theme = theme;
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
   const [view, setView] = useState('board');
   const [cards, setCards] = useState([]);
   const [modal, setModal] = useState(null);
@@ -247,6 +302,7 @@ export default function App() {
           </span>
           <span className="header-edit-hint">Edit</span>
         </div>
+        <ThemePicker theme={theme} setTheme={setTheme} />
         <nav className="app-nav">
           <button
             className={`nav-btn ${view === 'board' ? 'active' : ''}`}

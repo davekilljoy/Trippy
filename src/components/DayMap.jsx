@@ -2,6 +2,22 @@ import { useEffect, useRef, useMemo, useCallback } from 'react';
 import { Map, Marker, useMap } from '@vis.gl/react-google-maps';
 import './DayMap.css';
 
+function themeColors() {
+  const t = document.documentElement.dataset.theme;
+  if (t === 'dark') return {
+    ink: '%23e4e4e7', paper: '%230f0f11', accent: '%23a78bfa',
+    inkHex: '#e4e4e7', accentHex: '#a78bfa',
+  };
+  if (t === 'minimal') return {
+    ink: '%23111111', paper: '%23ffffff', accent: '%235b21b6',
+    inkHex: '#111111', accentHex: '#5b21b6',
+  };
+  return {
+    ink: '%2312100e', paper: '%23f2ece0', accent: '%239a7c3f',
+    inkHex: '#12100e', accentHex: '#9a7c3f',
+  };
+}
+
 // Decode Google encoded polyline to array of {lat, lng}
 function decodePolyline(encoded) {
   if (!encoded) return [];
@@ -66,17 +82,18 @@ function RoutePolylines({ legs, positions }) {
         if (!path.length) continue;
 
         const isWalking = route.mode === 'walking';
+        const tc = themeColors();
         const polyline = isWalking
           ? new google.maps.Polyline({
               path,
-              strokeColor: '#12100e',
+              strokeColor: tc.inkHex,
               strokeOpacity: 0.6,
               strokeWeight: 3,
               map,
             })
           : new google.maps.Polyline({
               path,
-              strokeColor: '#9a7c3f',
+              strokeColor: tc.accentHex,
               strokeOpacity: 0,
               strokeWeight: 2,
               icons: [{
@@ -89,9 +106,10 @@ function RoutePolylines({ legs, positions }) {
         polylinesRef.current.push(polyline);
       }
     } else if (positions?.length > 1) {
+      const tc = themeColors();
       const polyline = new google.maps.Polyline({
         path: positions,
-        strokeColor: '#12100e',
+        strokeColor: tc.inkHex,
         strokeOpacity: 0,
         strokeWeight: 2,
         icons: [{
@@ -131,29 +149,29 @@ function FitBounds({ positions }) {
   return null;
 }
 
-// Create numbered marker icon as a data URL SVG
 function numberedIcon(n) {
+  const t = themeColors();
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
-    <circle cx="14" cy="14" r="13" fill="%2312100e" stroke="%23f2ece0" stroke-width="2"/>
-    <text x="14" y="18" text-anchor="middle" fill="%23f2ece0" font-family="monospace" font-size="11" font-weight="bold">${n}</text>
+    <circle cx="14" cy="14" r="13" fill="${t.ink}" stroke="${t.paper}" stroke-width="2"/>
+    <text x="14" y="18" text-anchor="middle" fill="${t.paper}" font-family="monospace" font-size="11" font-weight="bold">${n}</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
 
-// Hotel marker icon (gold)
 function hotelIcon() {
+  const t = themeColors();
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
-    <circle cx="14" cy="14" r="13" fill="%239a7c3f" stroke="%23f2ece0" stroke-width="2"/>
-    <text x="14" y="19" text-anchor="middle" fill="%23f2ece0" font-family="monospace" font-size="13" font-weight="bold">H</text>
+    <circle cx="14" cy="14" r="13" fill="${t.accent}" stroke="${t.paper}" stroke-width="2"/>
+    <text x="14" y="19" text-anchor="middle" fill="${t.paper}" font-family="monospace" font-size="13" font-weight="bold">H</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
 
-// Destination marker (red — airport or destination hotel)
 function destinationIcon() {
+  const t = themeColors();
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
-    <circle cx="14" cy="14" r="13" fill="%23b5291c" stroke="%23f2ece0" stroke-width="2"/>
-    <text x="14" y="19" text-anchor="middle" fill="%23f2ece0" font-family="monospace" font-size="12" font-weight="bold">D</text>
+    <circle cx="14" cy="14" r="13" fill="%23b5291c" stroke="${t.paper}" stroke-width="2"/>
+    <text x="14" y="19" text-anchor="middle" fill="${t.paper}" font-family="monospace" font-size="12" font-weight="bold">D</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }

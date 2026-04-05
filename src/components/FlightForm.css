@@ -1,7 +1,7 @@
 .flight-form-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(18, 16, 14, 0.4);
+  background: color-mix(in srgb, var(--ink) 40%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -22,7 +22,7 @@
 .flight-form-title {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 1.2rem;
+  font-size: var(--text-lg);
   margin-bottom: 1rem;
 }
 
@@ -32,7 +32,7 @@
 
 .flight-form-label {
   display: block;
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
@@ -46,7 +46,7 @@
 
 .flight-form-toggle button {
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0.4rem 1rem;
@@ -88,7 +88,7 @@
 }
 
 .flight-form-field label {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
@@ -98,7 +98,7 @@
 .flight-form-field input,
 .flight-form-field textarea {
   font-family: var(--font-body);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -126,7 +126,7 @@
 
 .flight-form-cancel {
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 0.5rem 1rem;
@@ -144,7 +144,7 @@
 
 .flight-form-save {
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 0.5rem 1rem;

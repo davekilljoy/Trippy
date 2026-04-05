@@ -8,20 +8,20 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.5rem 0.6rem;
-  background: color-mix(in srgb, var(--gold) 8%, var(--paper));
-  border: 1px solid color-mix(in srgb, var(--gold) 25%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
   border-radius: var(--radius);
 }
 
 .leg-hotel-icon {
-  font-size: 0.85rem;
   flex-shrink: 0;
+  color: var(--accent);
 }
 
 .leg-hotel-name {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 0.88rem;
+  font-size: var(--text-base);
   color: var(--ink);
   background: none;
   border: none;
@@ -33,28 +33,28 @@
 }
 
 .leg-hotel-name:hover {
-  color: var(--gold);
+  color: var(--accent);
 }
 
 .leg-hotel-arrow {
-  font-size: 0.6rem;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 
 .leg-date-range {
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   color: var(--muted);
   margin-left: auto;
 }
 
 .leg-day-count {
   font-family: var(--font-body);
-  font-size: 0.58rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--gold);
-  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   padding: 0.1rem 0.35rem;
   border-radius: 3px;
   flex-shrink: 0;
@@ -86,18 +86,18 @@
   cursor: pointer;
   text-align: left;
   font-family: var(--font-body);
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   color: var(--ink);
   transition: background 0.1s;
 }
 
 .leg-hotel-option:hover {
-  background: color-mix(in srgb, var(--gold) 10%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .leg-hotel-option.active {
-  background: color-mix(in srgb, var(--gold) 15%, transparent);
-  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  font-weight: 700;
 }
 
 .leg-hotel-option + .leg-hotel-option {
@@ -105,6 +105,6 @@
 }
 
 .leg-hotel-addr {
-  font-size: 0.62rem;
+  font-size: var(--text-xs);
   color: var(--muted);
 }

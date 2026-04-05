@@ -1,7 +1,7 @@
 .tdm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(18, 16, 14, 0.4);
+  background: color-mix(in srgb, var(--ink) 40%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -29,14 +29,14 @@
 .tdm-title {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 1.3rem;
-  font-weight: 500;
+  font-size: var(--text-lg);
+  font-weight: 600;
 }
 
 .tdm-close {
   background: none;
   border: none;
-  font-size: 1.4rem;
+  font-size: var(--text-xl);
   color: var(--muted);
   padding: 0.2rem;
   line-height: 1;
@@ -61,7 +61,7 @@
 
 .tdm-section-title {
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--muted);
@@ -88,7 +88,7 @@
 }
 
 .tdm-field label {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
@@ -97,7 +97,7 @@
 
 .tdm-field input {
   font-family: var(--font-body);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -126,7 +126,7 @@
   height: 26px;
   border: none;
   background: transparent;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   color: var(--ink);
   border-radius: 50%;
   display: flex;
@@ -140,8 +140,8 @@
 }
 
 .tdm-stepper span {
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: var(--text-base);
+  font-weight: 600;
   min-width: 1.4rem;
   text-align: center;
 }
@@ -161,7 +161,7 @@
 }
 
 .tdm-child-label {
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   color: var(--ink);
   min-width: 50px;
 }
@@ -169,7 +169,7 @@
 .tdm-child-age {
   width: 50px;
   font-family: var(--font-body);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   padding: 0.3rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -184,7 +184,7 @@
 }
 
 .tdm-child-unit {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 
@@ -192,7 +192,7 @@
   background: none;
   border: none;
   color: var(--red);
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   padding: 0;
   line-height: 1;
   margin-left: 0.2rem;
@@ -200,7 +200,7 @@
 
 .tdm-add-child {
   font-family: var(--font-body);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0.3rem 0.5rem;
@@ -220,7 +220,7 @@
 /* Flights */
 .tdm-add-flight {
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0.2rem 0.5rem;
@@ -242,7 +242,7 @@
 }
 
 .tdm-empty {
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   color: var(--muted);
   font-style: italic;
 }
@@ -257,7 +257,7 @@
 
 .tdm-cancel {
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 0.5rem 1rem;
@@ -274,7 +274,7 @@
 
 .tdm-save {
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 0.5rem 1rem;

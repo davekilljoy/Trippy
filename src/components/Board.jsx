@@ -1,10 +1,28 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { Star, X, Landmark, UtensilsCrossed, Hotel, Sparkles, TrainFront, ShoppingBag, MapPin, LayoutGrid, List } from 'lucide-react';
+
+const CATEGORY_ICONS = {
+  attraction: Landmark,
+  restaurant: UtensilsCrossed,
+  hotel: Hotel,
+  experience: Sparkles,
+  transport: TrainFront,
+  shopping: ShoppingBag,
+};
 import IdeaCard from './IdeaCard.jsx';
 import ProximityMap from './ProximityMap.jsx';
 import { haversine, formatDistance, formatTravelTime } from '../lib/geo.js';
 import './Board.css';
 
-const CATEGORIES = ['attraction', 'restaurant', 'hotel', 'experience', 'transport', 'shopping'];
+const CATEGORIES = ['attraction', 'restaurant', 'hotel', 'experience', 'shopping'];
+
+const CATEGORY_COLORS = {
+  attraction: '#12100e',
+  restaurant: '#b5291c',
+  hotel: 'var(--accent)',
+  experience: '#5b7a3a',
+  shopping: '#8b5e9b',
+};
 
 function useIsMobile(breakpoint = 700) {
   const [mobile, setMobile] = useState(() => window.innerWidth <= breakpoint);
@@ -22,6 +40,7 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
   const [disabledCats, setDisabledCats] = useState(new Set());
   const [starredOnly, setStarredOnly] = useState(false);
   const [showMap, setShowMap] = useState(true);
+  const [listView, setListView] = useState(false);
   const [anchorId, setAnchorId] = useState(null);
   const [radiusKm, setRadiusKm] = useState(1.5);
   const [nearOpen, setNearOpen] = useState(false);
@@ -142,6 +161,47 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
     })
   );
 
+  const renderList = () => (
+    displayCards.map(card => {
+      const dist = card._dist != null && card._dist > 0 ? card._dist : null;
+      const badge = dist != null ? `${formatDistance(dist)} · ${formatTravelTime(dist)}` : null;
+      const CatIcon = CATEGORY_ICONS[card.category] || MapPin;
+      const canAnchor = card.lat && card.lng;
+      return (
+        <div
+          key={card.id}
+          className={`list-row ${card.id === anchorId ? 'list-row--anchor' : ''} ${canAnchor ? 'map-card-clickable' : ''}`}
+          onClick={canAnchor ? (e) => {
+            if (e.target.closest('button')) return;
+            handleSelectAnchor(card.id);
+          } : undefined}
+        >
+          {card.image_url
+            ? <img src={card.image_url} alt="" className="list-row-img" />
+            : <span className="list-row-img list-row-img--placeholder"><CatIcon size={16} /></span>
+          }
+          <div className="list-row-info">
+            <div className="list-row-top">
+              <span className="list-row-title">{card.title}</span>
+              <span className="list-row-cat"><CatIcon size={12} /></span>
+              {card.rating && <span className="list-row-rating">{card.rating}★</span>}
+              {badge && <span className="list-row-dist">{badge}</span>}
+            </div>
+            {card.address && <span className="list-row-addr">{card.address}</span>}
+            {card.description && <span className="list-row-desc">{card.description}</span>}
+            {card.timing && <span className="list-row-timing">{card.timing}</span>}
+          </div>
+          <button
+            className="list-row-star"
+            onClick={(e) => { e.stopPropagation(); onStar(card.id); }}
+          >
+            <Star size={14} fill={card.starred ? 'currentColor' : 'none'} />
+          </button>
+        </div>
+      );
+    })
+  );
+
   // On mobile, map is always on
   const effectiveShowMap = isMobile || showMap;
 
@@ -153,15 +213,20 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
         <div className="board-toolbar-mobile">
           <div className="board-toolbar-top">
             <div className="filter-pills filter-pills--scroll">
-              {CATEGORIES.map(cat => (
-                <button
-                  key={cat}
-                  className={`pill ${disabledCats.has(cat) ? '' : 'active'}`}
-                  onClick={() => toggleCat(cat)}
-                >
-                  {cat}
-                </button>
-              ))}
+              {CATEGORIES.map(cat => {
+                const Icon = CATEGORY_ICONS[cat];
+                const active = !disabledCats.has(cat);
+                return (
+                  <button
+                    key={cat}
+                    className={`pill ${active ? 'active' : ''}`}
+                    onClick={() => toggleCat(cat)}
+                    style={active ? { background: CATEGORY_COLORS[cat], borderColor: CATEGORY_COLORS[cat], color: '#fff' } : undefined}
+                  >
+                    {Icon && <Icon size={12} />} {cat}
+                  </button>
+                );
+              })}
               <button
                 className={`pill pill-near ${anchorId ? 'active' : ''}`}
                 onClick={() => anchorId ? handleClearNear() : setNearOpen(o => !o)}
@@ -170,13 +235,13 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
                   ? <>Near {anchorCard.title.length > 12 ? anchorCard.title.slice(0, 12) + '…' : anchorCard.title}</>
                   : 'Nearest'
                 }
-                {anchorId && <span className="near-clear" onClick={(e) => { e.stopPropagation(); handleClearNear(); }}> ×</span>}
+                {anchorId && <span className="near-clear" onClick={(e) => { e.stopPropagation(); handleClearNear(); }}><X size={12} /></span>}
               </button>
               <button
                 className={`pill pill-starred ${starredOnly ? 'active' : ''}`}
                 onClick={() => setStarredOnly(s => !s)}
               >
-                ★ Starred
+                <Star size={12} fill="currentColor" /> Starred
               </button>
             </div>
             <button className="add-btn-mobile" onClick={onAdd}>+</button>
@@ -237,13 +302,13 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
                         <span className="mobile-panel-name">{card.title}</span>
                         {badge && <span className="mobile-panel-dist">{badge}</span>}
                         {card.timing && <span className="mobile-panel-tip">{card.timing}</span>}
-                        <span className="mobile-panel-cat">{card.category}</span>
+                        <span className="mobile-panel-cat">{(() => { const Icon = CATEGORY_ICONS[card.category] || MapPin; return <Icon size={10} />; })()}</span>
                       </div>
                       <button
                         className="mobile-panel-star"
                         onClick={(e) => { e.stopPropagation(); onStar(card.id); }}
                       >
-                        {card.starred ? '★' : '☆'}
+                        <Star size={14} fill={card.starred ? 'currentColor' : 'none'} />
                       </button>
                     </div>
                   );
@@ -260,22 +325,34 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
   return (
     <div className={`board ${showMap ? 'board--with-map' : ''}`}>
       <div className="board-toolbar">
+        <button
+          className="view-toggle"
+          onClick={() => setListView(v => !v)}
+          title={listView ? 'Card view' : 'List view'}
+        >
+          {listView ? <LayoutGrid size={16} /> : <List size={16} />}
+        </button>
         <div className="filter-pills">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat}
-              className={`pill ${disabledCats.has(cat) ? '' : 'active'}`}
-              onClick={() => toggleCat(cat)}
-            >
-              {cat}
-            </button>
-          ))}
+          {CATEGORIES.map(cat => {
+            const Icon = CATEGORY_ICONS[cat];
+            const active = !disabledCats.has(cat);
+            return (
+              <button
+                key={cat}
+                className={`pill ${active ? 'active' : ''}`}
+                onClick={() => toggleCat(cat)}
+                style={active ? { background: CATEGORY_COLORS[cat], borderColor: CATEGORY_COLORS[cat], color: '#fff' } : undefined}
+              >
+                {Icon && <Icon size={12} />} {cat}
+              </button>
+            );
+          })}
 
           <button
             className={`pill pill-starred ${starredOnly ? 'active' : ''}`}
             onClick={() => setStarredOnly(s => !s)}
           >
-            ★ Starred
+            <Star size={12} fill="currentColor" /> Starred
           </button>
 
           {/* Near filter */}
@@ -288,7 +365,7 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
                 ? <>Near {anchorCard.title.length > 18 ? anchorCard.title.slice(0, 18) + '…' : anchorCard.title}</>
                 : 'Near'
               }
-              {anchorId && <span className="near-clear" onClick={(e) => { e.stopPropagation(); handleClearNear(); }}> ×</span>}
+              {anchorId && <span className="near-clear" onClick={(e) => { e.stopPropagation(); handleClearNear(); }}><X size={12} /></span>}
             </button>
 
             {anchorId && (
@@ -316,7 +393,7 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
                     onClick={() => handleSelectAnchor(c.id)}
                   >
                     <span className="near-dropdown-name">{c.title}</span>
-                    <span className="near-dropdown-cat">{c.category}</span>
+                    <span className="near-dropdown-cat">{(() => { const Icon = CATEGORY_ICONS[c.category] || MapPin; return <Icon size={10} />; })()}</span>
                   </button>
                 ))}
               </div>
@@ -341,9 +418,11 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
       ) : showMap ? (
         <div className="board-map-layout">
           <div className="board-cards-panel">
-            <div className="masonry masonry--map-mode">
-              {renderCards()}
-            </div>
+            {listView ? (
+              <div className="board-list">{renderList()}</div>
+            ) : (
+              <div className="masonry masonry--map-mode">{renderCards()}</div>
+            )}
           </div>
           <div className="board-map-panel">
             <ProximityMap
@@ -357,6 +436,8 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
             />
           </div>
         </div>
+      ) : listView ? (
+        <div className="board-list">{renderList()}</div>
       ) : (
         <div className="masonry">
           {renderCards()}

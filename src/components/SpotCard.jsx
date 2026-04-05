@@ -1,4 +1,14 @@
+import { X, Landmark, UtensilsCrossed, Hotel, Sparkles, TrainFront, ShoppingBag, MapPin } from 'lucide-react';
 import './SpotCard.css';
+
+const CATEGORY_ICONS = {
+  attraction: Landmark,
+  restaurant: UtensilsCrossed,
+  hotel: Hotel,
+  experience: Sparkles,
+  transport: TrainFront,
+  shopping: ShoppingBag,
+};
 
 const PRICE_LABELS = ['', '$', '$$', '$$$', '$$$$'];
 
@@ -59,11 +69,11 @@ export default function SpotCard({
         <div className="spot-row-main">
           {markerNum && <span className="spot-marker">{markerNum}</span>}
           <span className="spot-title">{card.place_name || card.title}</span>
-          {card.category && <span className="spot-cat">{card.category}</span>}
+          {card.category && <span className="spot-cat">{(() => { const Icon = CATEGORY_ICONS[card.category] || MapPin; return <Icon size={10} />; })()}</span>}
           {card.rating && <span className="spot-rating">{card.rating}★</span>}
           {priceLabel && <span className="spot-price">{priceLabel}</span>}
           {onRemove && (
-            <button className="spot-remove" onClick={(e) => { e.stopPropagation(); onRemove(); }}>×</button>
+            <button className="spot-remove" onClick={(e) => { e.stopPropagation(); onRemove(); }}><X size={14} /></button>
           )}
         </div>
 

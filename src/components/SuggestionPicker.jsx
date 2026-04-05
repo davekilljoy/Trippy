@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { X } from 'lucide-react';
 import { suggestForSlots, createCard } from '../lib/api.js';
 import { haversine } from '../lib/geo.js';
 import SpotCard from './SpotCard.jsx';
@@ -99,7 +100,7 @@ export default function SuggestionPicker({
       <div className="sug-picker-modal" onClick={e => e.stopPropagation()}>
         <div className="sug-picker-header">
           <h3>Pick a spot</h3>
-          <button className="sug-picker-close" onClick={onClose}>×</button>
+          <button className="sug-picker-close" onClick={onClose}><X size={16} /></button>
         </div>
 
         {nearbyCards.length > 0 && (

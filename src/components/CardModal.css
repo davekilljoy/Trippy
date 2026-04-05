@@ -1,7 +1,7 @@
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(18, 16, 14, 0.55);
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -23,8 +23,8 @@
 .modal-title {
   font-family: var(--font-display);
   font-style: italic;
-  font-weight: 500;
-  font-size: 1.35rem;
+  font-weight: 600;
+  font-size: var(--text-lg);
   margin-bottom: 1.4rem;
 }
 
@@ -35,7 +35,7 @@
 
 .field label {
   display: block;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
@@ -46,7 +46,7 @@
   text-transform: none;
   letter-spacing: normal;
   font-style: italic;
-  color: var(--gold);
+  color: var(--accent);
   animation: pulse 1.2s ease-in-out infinite;
 }
 
@@ -70,7 +70,7 @@
 .field textarea {
   width: 100%;
   font-family: var(--font-body);
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   padding: 0.55rem 0.7rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -108,7 +108,7 @@
 
 .cat-pill {
   font-family: var(--font-body);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0.3rem 0.65rem;
@@ -187,8 +187,8 @@
 }
 
 .suggestion-name {
-  font-size: 0.82rem;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: 600;
   color: var(--ink);
   display: flex;
   align-items: center;
@@ -196,14 +196,14 @@
 }
 
 .suggestion-rating {
-  font-size: 0.68rem;
-  font-weight: 400;
-  color: var(--gold, #b8860b);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--accent);
   white-space: nowrap;
 }
 
 .suggestion-addr {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -237,7 +237,7 @@
 
 .btn-cancel {
   font-family: var(--font-body);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   padding: 0.5rem 1rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -252,7 +252,7 @@
 
 .btn-save {
   font-family: var(--font-body);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0.5rem 1.2rem;

@@ -1,9 +1,14 @@
 import { useState } from 'react';
+import { Check, X, Landmark, UtensilsCrossed, Hotel, Sparkles, TrainFront, ShoppingBag, MapPin } from 'lucide-react';
 import './IdeaPicker.css';
 
 const CATEGORY_ICONS = {
-  attraction: '⛩', restaurant: '🍜', hotel: '🏨',
-  experience: '🎋', transport: '🚅', shopping: '🛍',
+  attraction: Landmark,
+  restaurant: UtensilsCrossed,
+  hotel: Hotel,
+  experience: Sparkles,
+  transport: TrainFront,
+  shopping: ShoppingBag,
 };
 
 export default function IdeaPicker({ ideas, onAdd, onFollowUp, onClose, loading, followUpLoading, mapVisible }) {
@@ -41,7 +46,7 @@ export default function IdeaPicker({ ideas, onAdd, onFollowUp, onClose, loading,
           <div className="picker-actions-top">
             <button className="picker-link" onClick={selectAll}>Select all</button>
             <button className="picker-link" onClick={selectNone}>Select none</button>
-            <button className="picker-close" onClick={onClose}>×</button>
+            <button className="picker-close" onClick={onClose}><X size={16} /></button>
           </div>
         </div>
 
@@ -53,7 +58,7 @@ export default function IdeaPicker({ ideas, onAdd, onFollowUp, onClose, loading,
               onClick={() => toggle(i)}
             >
               <div className="picker-check">
-                {selected.has(i) ? '✓' : ''}
+                {selected.has(i) && <Check size={14} />}
               </div>
               <span className="picker-num">{i + 1}</span>
               <div className="picker-img">
@@ -61,13 +66,15 @@ export default function IdeaPicker({ ideas, onAdd, onFollowUp, onClose, loading,
                   <img src={idea.image_url} alt={idea.title} />
                 ) : (
                   <span className="picker-img-placeholder">
-                    {CATEGORY_ICONS[idea.category] || '📍'}
+                    {(() => { const Icon = CATEGORY_ICONS[idea.category] || MapPin; return <Icon size={20} />; })()}
                   </span>
                 )}
               </div>
               <div className="picker-info">
                 <div className="picker-info-top">
-                  <span className="picker-cat">{idea.category}</span>
+                  <span className="picker-cat">
+                    {(() => { const Icon = CATEGORY_ICONS[idea.category] || MapPin; return <Icon size={12} />; })()}
+                  </span>
                   <h3 className="picker-item-title">{idea.title}</h3>
                   {idea.rating && <span className="picker-rating">{idea.rating}★</span>}
                 </div>

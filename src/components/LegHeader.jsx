@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Hotel, ChevronDown } from 'lucide-react';
 import './LegHeader.css';
 
 export default function LegHeader({ hotel, hotels, days, onHotelChange }) {
@@ -13,13 +14,13 @@ export default function LegHeader({ hotel, hotels, days, onHotelChange }) {
   return (
     <div className="leg-header">
       <div className="leg-hotel-info">
-        <span className="leg-hotel-icon">🏨</span>
+        <Hotel size={16} className="leg-hotel-icon" />
         <button
           className="leg-hotel-name"
           onClick={() => setShowPicker(p => !p)}
         >
           {hotel?.title || 'No hotel assigned'}
-          <span className="leg-hotel-arrow">▾</span>
+          <ChevronDown size={12} className="leg-hotel-arrow" />
         </button>
         <span className="leg-date-range">{dateRange}</span>
         <span className="leg-day-count">{days.length} {days.length === 1 ? 'day' : 'days'}</span>

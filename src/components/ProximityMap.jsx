@@ -2,43 +2,69 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Map, Marker, InfoWindow, useMap } from '@vis.gl/react-google-maps';
 import './ProximityMap.css';
 
-const CATEGORY_COLORS = {
+function themeColors() {
+  const t = document.documentElement.dataset.theme;
+  if (t === 'dark') return {
+    ink: '%23e4e4e7', paper: '%230f0f11', accent: '%23a78bfa',
+    inkHex: '#e4e4e7', accentHex: '#a78bfa',
+  };
+  if (t === 'minimal') return {
+    ink: '%23111111', paper: '%23ffffff', accent: '%235b21b6',
+    inkHex: '#111111', accentHex: '#5b21b6',
+  };
+  return {
+    ink: '%2312100e', paper: '%23f2ece0', accent: '%239a7c3f',
+    inkHex: '#12100e', accentHex: '#9a7c3f',
+  };
+}
+
+const POI_COLORS = {
   attraction: '%2312100e',
   restaurant: '%23b5291c',
-  hotel: '%239a7c3f',
   experience: '%235b7a3a',
   transport: '%234a6fa5',
   shopping: '%238b5e9b',
 };
 
-const LEGEND_COLORS = {
+const POI_LEGEND = {
   attraction: '#12100e',
   restaurant: '#b5291c',
-  hotel: '#9a7c3f',
   experience: '#5b7a3a',
   transport: '#4a6fa5',
   shopping: '#8b5e9b',
 };
 
+function getCategoryColors() {
+  const t = themeColors();
+  return { ...POI_COLORS, hotel: t.accent };
+}
+
+function getLegendColors() {
+  const t = themeColors();
+  return { ...POI_LEGEND, hotel: t.accentHex };
+}
+
 function categoryIcon(category, isAnchor, isStarred) {
+  const t = themeColors();
+  const catColors = getCategoryColors();
   if (isAnchor) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34">
-      <circle cx="17" cy="17" r="15" fill="%239a7c3f" stroke="%23f2ece0" stroke-width="2"/>
-      <text x="17" y="22" text-anchor="middle" fill="%23f2ece0" font-size="14">★</text>
+      <circle cx="17" cy="17" r="15" fill="${t.accent}" stroke="${t.paper}" stroke-width="2"/>
+      <text x="17" y="22" text-anchor="middle" fill="${t.paper}" font-size="14">★</text>
     </svg>`;
     return `data:image/svg+xml;charset=UTF-8,${svg}`;
   }
   if (isStarred) {
-    const fill = CATEGORY_COLORS[category] || '%2312100e';
+    const fill = catColors[category] || t.ink;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
-      <circle cx="14" cy="14" r="13" fill="${fill}" stroke="%23f2ece0" stroke-width="2"/>
-      <text x="14" y="18.5" text-anchor="middle" fill="%23f2ece0" font-size="11">★</text>
+      <circle cx="14" cy="14" r="13" fill="${fill}" stroke="${t.paper}" stroke-width="2"/>
+      <text x="14" y="18.5" text-anchor="middle" fill="${t.paper}" font-size="11">★</text>
     </svg>`;
     return `data:image/svg+xml;charset=UTF-8,${svg}`;
   }
-  const fill = CATEGORY_COLORS[category] || '%2312100e';
+  const fill = catColors[category] || t.ink;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">
-    <circle cx="12" cy="12" r="11" fill="${fill}" stroke="%23f2ece0" stroke-width="2"/>
+    <circle cx="12" cy="12" r="11" fill="${fill}" stroke="${t.paper}" stroke-width="2"/>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
@@ -163,10 +189,11 @@ function ViewportTracker({ onBoundsChange }) {
 }
 
 function numberedIcon(num) {
+  const t = themeColors();
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40">
-    <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 24 16 24s16-12 16-24C32 7.2 24.8 0 16 0z" fill="%239a7c3f"/>
-    <circle cx="16" cy="15" r="11" fill="%23f2ece0"/>
-    <text x="16" y="19.5" text-anchor="middle" fill="%2312100e" font-size="12" font-weight="700" font-family="sans-serif">${num}</text>
+    <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 24 16 24s16-12 16-24C32 7.2 24.8 0 16 0z" fill="${t.accent}"/>
+    <circle cx="16" cy="15" r="11" fill="${t.paper}"/>
+    <text x="16" y="19.5" text-anchor="middle" fill="${t.ink}" font-size="12" font-weight="700" font-family="sans-serif">${num}</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
@@ -241,9 +268,10 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
   );
 
   // Categories present in the current set
+  const legendColors = getLegendColors();
   const categories = useMemo(() => {
     const cats = new Set(geoCards.map(c => c.category).filter(Boolean));
-    return Object.keys(LEGEND_COLORS).filter(c => cats.has(c));
+    return Object.keys(legendColors).filter(c => cats.has(c));
   }, [geoCards]);
 
   const center = positions.length > 0 ? positions[0] : { lat: 35.68, lng: 139.76 };
@@ -364,7 +392,7 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
         <div className="prox-legend">
           {categories.map(cat => (
             <span key={cat} className="prox-legend-item">
-              <span className="prox-legend-dot" style={{ background: LEGEND_COLORS[cat] }} />
+              <span className="prox-legend-dot" style={{ background: legendColors[cat] }} />
               {cat}
             </span>
           ))}

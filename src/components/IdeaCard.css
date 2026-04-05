@@ -21,10 +21,10 @@
   top: 12px;
   right: -30px;
   z-index: 2;
-  background: var(--gold);
+  background: var(--accent);
   color: var(--paper);
   font-family: var(--font-body);
-  font-size: 0.62rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   padding: 0.2rem 2.2rem;
@@ -53,22 +53,22 @@
   align-items: center;
   justify-content: center;
   height: 120px;
-  font-size: 2.2rem;
-  background: linear-gradient(135deg, var(--border) 0%, #e2dbd0 100%);
+  color: var(--muted);
+  background: linear-gradient(135deg, var(--border) 0%, var(--card-bg) 100%);
 }
 
 .card-category-badge {
   position: absolute;
   bottom: 8px;
   left: 8px;
-  font-family: var(--font-body);
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   background: var(--ink);
   color: var(--paper);
-  padding: 0.18rem 0.5rem;
+  padding: 0.3rem;
   border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .card-rating-badge {
@@ -76,12 +76,12 @@
   bottom: 8px;
   right: 8px;
   font-family: var(--font-body);
-  font-size: 0.62rem;
-  background: var(--gold);
+  font-size: var(--text-xs);
+  background: var(--accent);
   color: var(--paper);
   padding: 0.18rem 0.5rem;
   border-radius: 3px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 /* Body */
@@ -103,8 +103,8 @@
 .card-title {
   font-family: var(--font-display);
   font-style: italic;
-  font-weight: 500;
-  font-size: 1.05rem;
+  font-weight: 600;
+  font-size: var(--text-md);
   line-height: 1.3;
   flex: 1;
 }
@@ -130,7 +130,7 @@
 .card-menu-btn {
   background: none;
   border: none;
-  font-size: 1.1rem;
+  font-size: var(--text-md);
   color: var(--muted);
   padding: 0.1rem 0.3rem;
   line-height: 1;
@@ -162,7 +162,7 @@
   border: none;
   background: none;
   font-family: var(--font-body);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   color: var(--ink);
 }
 
@@ -176,36 +176,36 @@
 
 /* Anchor highlight */
 .idea-card--anchor {
-  border-color: var(--gold);
+  border-color: var(--accent);
   border-width: 2px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 20%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 /* Distance badge */
 .card-distance {
-  font-size: 0.72rem;
-  color: var(--gold);
-  font-weight: 500;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  font-weight: 600;
   margin-bottom: 0.2rem;
 }
 
 /* Address, description & timing */
 .card-address {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--muted);
   margin-bottom: 0.3rem;
   line-height: 1.4;
 }
 
 .card-desc {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--ink);
   line-height: 1.55;
   margin-bottom: 0.4rem;
 }
 
 .card-timing {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--muted);
   margin-top: auto;
   margin-bottom: 0.5rem;
@@ -217,19 +217,9 @@
 
 .card-timing-icon {
   flex-shrink: 0;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  border: 1.5px solid var(--muted);
-  font-size: 0.55rem;
-  font-weight: 700;
-  font-style: italic;
-  font-family: Georgia, serif;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 1px;
+  color: var(--muted);
   opacity: 0.7;
+  margin-top: 1px;
 }
 
 /* Notes */
@@ -242,23 +232,23 @@
 
 .note {
   display: flex;
-  align-items: flex-start;
-  gap: 0.45rem;
+  align-items: center;
+  gap: 0.3rem;
 }
 
 .avatar {
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: var(--ink);
   color: var(--paper);
-  font-size: 0.6rem;
-  font-weight: 500;
+  font-size: var(--text-2xs);
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 1px;
+  line-height: 1;
 }
 
 .avatar.jen {
@@ -266,7 +256,7 @@
 }
 
 .note-text {
-  font-size: 0.76rem;
+  font-size: var(--text-sm);
   color: var(--muted);
   line-height: 1.4;
 }
@@ -278,7 +268,7 @@
   right: 8px;
   background: #fff;
   border: none;
-  font-size: 1.1rem;
+  font-size: var(--text-md);
   color: var(--muted);
   cursor: pointer;
   padding: 0.2rem 0.35rem 0.35rem;
@@ -289,11 +279,11 @@
 }
 
 .card-star-btn:hover {
-  color: var(--gold);
+  color: var(--accent);
   background: #fff;
   transform: scale(1.15);
 }
 
 .card-star-btn.active {
-  color: var(--gold);
+  color: var(--accent);
 }

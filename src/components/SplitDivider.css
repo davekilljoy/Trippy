@@ -20,7 +20,7 @@
   position: relative;
   z-index: 2;
   font-family: var(--font-body);
-  font-size: 0.55rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 0.12rem 0.5rem;
@@ -36,18 +36,18 @@
 }
 
 .split-btn:hover {
-  color: var(--gold);
-  border-color: var(--gold);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .merge-btn {
-  color: var(--gold);
+  color: var(--accent);
   background: var(--paper);
-  border: 1px solid var(--gold);
+  border: 1px solid var(--accent);
 }
 
 .merge-btn:hover {
-  background: var(--gold);
+  background: var(--accent);
   color: var(--paper);
 }
 
@@ -58,5 +58,5 @@
 
 .between-legs .split-line {
   height: 2px;
-  background: color-mix(in srgb, var(--gold) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 30%, var(--border));
 }

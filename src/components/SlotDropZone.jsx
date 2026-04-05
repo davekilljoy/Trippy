@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
+import { Hotel } from 'lucide-react';
 import { suggestForSlots, createCard } from '../lib/api.js';
 import { haversine } from '../lib/geo.js';
 import SpotCard from './SpotCard.jsx';
@@ -194,7 +195,7 @@ export default function SlotDropZone({
         <div className="slot-dropdown">
           {hotel && (
             <button className="slot-dd-hotel" onClick={() => handleSelectCard(hotel)}>
-              <span className="slot-dd-hotel-icon">H</span>
+              <Hotel size={14} className="slot-dd-hotel-icon" />
               <span className="slot-dd-hotel-label">{hotel.title || 'Hotel'}</span>
             </button>
           )}

@@ -7,23 +7,59 @@
   padding: 0;
 }
 
+/* --- Global tokens (shared across all themes) --- */
 :root {
-  --ink: #12100e;
-  --paper: #f2ece0;
-  --red: #b5291c;
-  --gold: #9a7c3f;
-  --gold-light: #c4a96a;
-  --muted: #8a8478;
-  --border: #d4cec2;
-  --card-bg: #faf6ed;
+  --text-2xs: 0.625rem;
+  --text-xs:  0.75rem;
+  --text-sm:  0.875rem;
+  --text-base: 1rem;
+  --text-md:  1.125rem;
+  --text-lg:  1.25rem;
+  --text-xl:  1.5rem;
+  --text-2xl: 1.75rem;
   --font-display: 'DM Sans', 'Inter', system-ui, sans-serif;
   --font-body: 'DM Sans', 'Inter', system-ui, sans-serif;
   --font-jp: 'DM Sans', 'Inter', system-ui, sans-serif;
   --radius: 6px;
 }
 
+/* --- Warm theme (default) --- */
+:root {
+  --ink: #12100e;
+  --paper: #f2ece0;
+  --red: #b5291c;
+  --accent: #9a7c3f;
+  --accent-light: #c4a96a;
+  --muted: #8a8478;
+  --border: #d4cec2;
+  --card-bg: #faf6ed;
+}
+
+/* --- Minimal theme --- */
+[data-theme="minimal"] {
+  --ink: #111111;
+  --paper: #ffffff;
+  --accent: #5b21b6;
+  --accent-light: #7c3aed;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --card-bg: #fafafa;
+}
+
+/* --- Dark theme --- */
+[data-theme="dark"] {
+  --ink: #e4e4e7;
+  --paper: #0f0f11;
+  --red: #ef4444;
+  --accent: #a78bfa;
+  --accent-light: #c4b5fd;
+  --muted: #71717a;
+  --border: #27272a;
+  --card-bg: #18181b;
+}
+
 html {
-  font-size: 17px;
+  font-size: 18px;
 }
 
 body {
@@ -46,6 +82,73 @@ body::before {
   pointer-events: none;
 }
 
+[data-theme="minimal"] body::before,
+[data-theme="dark"] body::before {
+  display: none;
+}
+
+/* --- Theme picker --- */
+.theme-picker {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.theme-picker-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.theme-picker-btn:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.theme-picker-menu {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  min-width: 120px;
+  padding: 0.25rem;
+}
+
+.theme-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.theme-picker-option:hover {
+  background: var(--border);
+}
+
+.theme-picker-option.active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
 /* --- Layout --- */
 .app-header {
   display: flex;
@@ -60,18 +163,18 @@ body::before {
 .app-title {
   font-family: var(--font-display);
   font-style: italic;
-  font-weight: 500;
-  font-size: 1.6rem;
+  font-weight: 600;
+  font-size: var(--text-2xl);
   letter-spacing: -0.02em;
 }
 
 .app-title span {
   font-family: var(--font-jp);
   font-style: normal;
-  font-weight: 400;
+  font-weight: 500;
   margin-left: 0.5rem;
   color: var(--muted);
-  font-size: 1.1rem;
+  font-size: var(--text-md);
 }
 
 .header-details {
@@ -90,13 +193,13 @@ body::before {
 }
 
 .header-chip {
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   color: var(--ink);
   white-space: nowrap;
 }
 
 .header-label {
-  font-size: 0.6rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
@@ -109,12 +212,12 @@ body::before {
 
 .header-sep {
   color: var(--border);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   margin: 0 0.1rem;
 }
 
 .header-edit-hint {
-  font-size: 0.6rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--muted);
@@ -134,7 +237,7 @@ body::before {
 
 .nav-btn {
   font-family: var(--font-body);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 0.45rem 1rem;
@@ -208,12 +311,12 @@ a:hover {
 }
 
 .gen-near-pill {
-  font-size: 0.62rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0.25rem 0.6rem;
   border-radius: 100px;
-  background: var(--gold);
+  background: var(--accent);
   color: var(--paper);
   white-space: nowrap;
   flex-shrink: 0;
@@ -222,7 +325,7 @@ a:hover {
 .gen-input {
   flex: 1;
   font-family: var(--font-body);
-  font-size: 0.88rem;
+  font-size: var(--text-base);
   border: none;
   background: transparent;
   color: var(--ink);
@@ -236,7 +339,7 @@ a:hover {
 
 .gen-submit {
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 0.5rem 1.1rem;
@@ -281,7 +384,7 @@ a:hover {
 
 .gen-status {
   flex: 1;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--muted);
   animation: gen-pulse 1.2s ease-in-out infinite;
 }
@@ -296,8 +399,8 @@ a:hover {
   top: -1.6rem;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.72rem;
-  color: var(--gold);
+  font-size: var(--text-xs);
+  color: var(--accent);
   white-space: nowrap;
 }
 
@@ -322,7 +425,7 @@ a:hover {
   }
 
   .nav-btn {
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
     padding: 0.3rem 0.7rem;
   }
 
@@ -333,7 +436,7 @@ a:hover {
   }
 
   .header-chip--dates {
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
   }
 
   /* On mobile, hide everything except date range */

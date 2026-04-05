@@ -22,8 +22,8 @@
 }
 
 .slot-zone.drag-over {
-  border-color: var(--gold);
-  background: color-mix(in srgb, var(--gold) 8%, transparent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .slot-zone.dragging {
@@ -56,7 +56,7 @@
 }
 
 .slot-empty-row:hover .slot-marker-empty {
-  border-color: var(--gold);
+  border-color: var(--accent);
 }
 
 /* Dropdown */
@@ -86,27 +86,26 @@
   background: transparent;
   cursor: pointer;
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--ink);
   transition: background 0.1s;
 }
 
 .slot-dd-hotel:hover {
-  background: color-mix(in srgb, var(--gold) 10%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .slot-dd-hotel-icon {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--gold);
+  background: var(--accent);
   color: var(--paper);
-  font-size: 0.6rem;
-  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  padding: 4px;
 }
 
 .slot-dd-hotel-label {
@@ -122,7 +121,7 @@
 .slot-dd-filter {
   width: 100%;
   font-family: var(--font-body);
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   padding: 0.3rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -132,7 +131,7 @@
 }
 
 .slot-dd-filter:focus {
-  border-color: var(--gold);
+  border-color: var(--accent);
 }
 
 .slot-dd-cards {
@@ -157,7 +156,7 @@
 .slot-dd-ai-input {
   flex: 1;
   font-family: var(--font-body);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   padding: 0.3rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -167,23 +166,23 @@
 }
 
 .slot-dd-ai-input:focus {
-  border-color: var(--gold);
+  border-color: var(--accent);
 }
 
 .slot-dd-ai-input::placeholder {
   color: var(--muted);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
 }
 
 .slot-dd-ai-go {
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0.3rem 0.6rem;
-  border: 1px solid var(--gold);
+  border: 1px solid var(--accent);
   border-radius: var(--radius);
-  background: var(--gold);
+  background: var(--accent);
   color: var(--paper);
   cursor: pointer;
   transition: opacity 0.15s;
@@ -205,7 +204,7 @@
   gap: 0.5rem;
   padding: 0.5rem 0.6rem;
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 
@@ -217,15 +216,15 @@
 .slot-dd-empty {
   padding: 0.5rem 0.6rem;
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 
 /* AI suggestion items get subtle gold tint */
 .slot-dd-cards .spot-card.ai {
-  background: color-mix(in srgb, var(--gold) 3%, transparent);
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
 }
 
 .slot-dd-cards .spot-card.ai:hover {
-  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }

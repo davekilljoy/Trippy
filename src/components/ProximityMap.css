@@ -30,7 +30,7 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: 0.58rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
@@ -52,7 +52,7 @@
 .poi-card--loading {
   padding: 1rem;
   text-align: center;
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   color: var(--muted);
   width: 180px;
 }
@@ -80,8 +80,8 @@
 .poi-name {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 0.88rem;
-  font-weight: 500;
+  font-size: var(--text-base);
+  font-weight: 600;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -89,26 +89,26 @@
 }
 
 .poi-rating {
-  font-size: 0.62rem;
-  color: var(--gold);
+  font-size: var(--text-xs);
+  color: var(--accent);
   flex-shrink: 0;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .poi-price {
-  font-size: 0.62rem;
+  font-size: var(--text-xs);
   color: var(--muted);
   flex-shrink: 0;
 }
 
 .poi-addr {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   color: var(--muted);
   line-height: 1.3;
 }
 
 .poi-summary {
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   color: var(--ink);
   line-height: 1.35;
   display: -webkit-box;
@@ -120,7 +120,7 @@
 .poi-add-btn {
   margin-top: 0.3rem;
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0.45rem 0;
@@ -144,10 +144,10 @@
 
 .poi-exists {
   margin-top: 0.2rem;
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--gold);
+  color: var(--accent);
   text-align: center;
 }
 
@@ -157,5 +157,5 @@
   justify-content: center;
   height: 100%;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: var(--text-base);
 }
