@@ -251,6 +251,10 @@
     padding: 0.3rem 0.55rem;
     font-size: var(--text-xs);
   }
+
+  .pill-label {
+    display: none;
+  }
 }
 
 .board-empty {

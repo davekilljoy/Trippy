@@ -17,7 +17,7 @@ import './Board.css';
 const CATEGORIES = ['attraction', 'restaurant', 'hotel', 'experience', 'shopping'];
 
 const CATEGORY_COLORS = {
-  attraction: '#12100e',
+  attraction: 'var(--cat-attraction)',
   restaurant: '#b5291c',
   hotel: 'var(--accent)',
   experience: '#5b7a3a',
@@ -223,7 +223,7 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
                     onClick={() => toggleCat(cat)}
                     style={active ? { background: CATEGORY_COLORS[cat], borderColor: CATEGORY_COLORS[cat], color: '#fff' } : undefined}
                   >
-                    {Icon && <Icon size={12} />} {cat}
+                    {Icon && <Icon size={14} />}<span className="pill-label">{cat}</span>
                   </button>
                 );
               })}
@@ -241,7 +241,7 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
                 className={`pill pill-starred ${starredOnly ? 'active' : ''}`}
                 onClick={() => setStarredOnly(s => !s)}
               >
-                <Star size={12} fill="currentColor" /> Starred
+                <Star size={14} fill="currentColor" /><span className="pill-label">Starred</span>
               </button>
             </div>
             <button className="add-btn-mobile" onClick={onAdd}>+</button>

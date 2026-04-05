@@ -12,7 +12,7 @@ const CATEGORY_ICONS = {
 };
 
 const CATEGORY_COLORS = {
-  attraction: '#12100e',
+  attraction: 'var(--cat-attraction)',
   restaurant: '#b5291c',
   hotel: 'var(--accent)',
   experience: '#5b7a3a',

@@ -6,20 +6,31 @@ function themeColors() {
   const t = document.documentElement.dataset.theme;
   if (t === 'dark') return {
     ink: '%23e4e4e7', paper: '%230f0f11', accent: '%23a78bfa',
+    stroke: '%23ffffff',
     inkHex: '#e4e4e7', accentHex: '#a78bfa',
   };
   if (t === 'minimal') return {
     ink: '%23111111', paper: '%23ffffff', accent: '%235b21b6',
+    stroke: '%23ffffff',
     inkHex: '#111111', accentHex: '#5b21b6',
   };
   return {
     ink: '%2312100e', paper: '%23f2ece0', accent: '%239a7c3f',
+    stroke: '%23f2ece0',
     inkHex: '#12100e', accentHex: '#9a7c3f',
   };
 }
 
 const POI_COLORS = {
   attraction: '%2312100e',
+  restaurant: '%23b5291c',
+  experience: '%235b7a3a',
+  transport: '%234a6fa5',
+  shopping: '%238b5e9b',
+};
+
+const POI_COLORS_DARK = {
+  attraction: '%234a4a5a',
   restaurant: '%23b5291c',
   experience: '%235b7a3a',
   transport: '%234a6fa5',
@@ -34,37 +45,60 @@ const POI_LEGEND = {
   shopping: '#8b5e9b',
 };
 
+const POI_LEGEND_DARK = {
+  attraction: '#4a4a5a',
+  restaurant: '#b5291c',
+  experience: '#5b7a3a',
+  transport: '#4a6fa5',
+  shopping: '#8b5e9b',
+};
+
 function getCategoryColors() {
   const t = themeColors();
-  return { ...POI_COLORS, hotel: t.accent };
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  return { ...(isDark ? POI_COLORS_DARK : POI_COLORS), hotel: t.accent };
 }
 
 function getLegendColors() {
   const t = themeColors();
-  return { ...POI_LEGEND, hotel: t.accentHex };
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  return { ...(isDark ? POI_LEGEND_DARK : POI_LEGEND), hotel: t.accentHex };
 }
+
+// Simplified SVG path data for category icons (from Lucide, 24x24 viewBox)
+const CAT_SVG_PATHS = {
+  attraction: '<path d="M10 18v-7"/><path d="M11.12 2.198a2 2 0 0 1 1.76.006l7.866 3.847c.476.233.31.949-.22.949H3.474c-.53 0-.695-.716-.22-.949z"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M2 18h20"/><path d="M6 18v-7"/><rect x="2" y="18" width="20" height="4" rx="1"/>',
+  restaurant: '<path d="m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8"/><path d="M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7"/><path d="m2.1 21.8 6.4-6.3"/><path d="m19 5-7 7"/>',
+  hotel: '<path d="M10 22v-6.57"/><path d="M12 11h.01"/><path d="M12 7h.01"/><path d="M14 15.43V22"/><path d="M15 16a5 5 0 0 0-6 0"/><path d="M16 11h.01"/><path d="M16 7h.01"/><path d="M8 11h.01"/><path d="M8 7h.01"/><rect x="4" y="2" width="16" height="20" rx="2"/>',
+  experience: '<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>',
+  transport: '<path d="M8 3.1V7a4 4 0 0 0 8 0V3.1"/><path d="m9 15-1-1"/><path d="m15 15 1-1"/><path d="M9 19c-2.8 0-5-2.2-5-5v-4a8 8 0 0 1 16 0v4c0 2.8-2.2 5-5 5Z"/><path d="m8 19-2 3"/><path d="m16 19 2 3"/>',
+  shopping: '<path d="M16 10a4 4 0 0 1-8 0"/><path d="M3.103 6.034h17.794"/><path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z"/>',
+};
 
 function categoryIcon(category, isAnchor, isStarred) {
   const t = themeColors();
   const catColors = getCategoryColors();
+  const iconPath = CAT_SVG_PATHS[category] || '';
+  const iconStroke = '%23ffffff';
   if (isAnchor) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34">
-      <circle cx="17" cy="17" r="15" fill="${t.accent}" stroke="${t.paper}" stroke-width="2"/>
-      <text x="17" y="22" text-anchor="middle" fill="${t.paper}" font-size="14">★</text>
+      <rect x="1" y="1" width="32" height="32" rx="7" fill="${t.accent}" stroke="${t.stroke}" stroke-width="2"/>
+      <g transform="translate(7,7) scale(0.833)" fill="none" stroke="${iconStroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${iconPath}</g>
     </svg>`;
     return `data:image/svg+xml;charset=UTF-8,${svg}`;
   }
   if (isStarred) {
     const fill = catColors[category] || t.ink;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
-      <circle cx="14" cy="14" r="13" fill="${fill}" stroke="${t.paper}" stroke-width="2"/>
-      <text x="14" y="18.5" text-anchor="middle" fill="${t.paper}" font-size="11">★</text>
+      <rect x="1" y="1" width="26" height="26" rx="6" fill="${fill}" stroke="${t.stroke}" stroke-width="2"/>
+      <g transform="translate(5,5) scale(0.75)" fill="none" stroke="${iconStroke}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${iconPath}</g>
     </svg>`;
     return `data:image/svg+xml;charset=UTF-8,${svg}`;
   }
   const fill = catColors[category] || t.ink;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">
-    <circle cx="12" cy="12" r="11" fill="${fill}" stroke="${t.paper}" stroke-width="2"/>
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">
+    <rect x="1" y="1" width="20" height="20" rx="5" fill="${fill}" stroke="${t.stroke}" stroke-width="2"/>
+    <g transform="translate(4,4) scale(0.583)" fill="none" stroke="${iconStroke}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${iconPath}</g>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
@@ -220,10 +254,10 @@ function ViewportTracker({ onBoundsChange }) {
 
 function numberedIcon(num) {
   const t = themeColors();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40">
-    <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 24 16 24s16-12 16-24C32 7.2 24.8 0 16 0z" fill="${t.accent}"/>
-    <circle cx="16" cy="15" r="11" fill="${t.paper}"/>
-    <text x="16" y="19.5" text-anchor="middle" fill="${t.ink}" font-size="12" font-weight="700" font-family="sans-serif">${num}</text>
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30">
+    <rect x="1" y="1" width="28" height="28" rx="6" fill="${t.accent}" stroke="${t.stroke}" stroke-width="2"/>
+    <circle cx="15" cy="15" r="10" fill="${t.paper}"/>
+    <text x="15" y="19.5" text-anchor="middle" fill="${t.ink}" font-size="12" font-weight="700" font-family="sans-serif">${num}</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
@@ -335,7 +369,7 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
           const isAnchor = card.id === anchorId;
           const isStarred = !!card.starred;
           const dimmed = (anchorId && !isAnchor) || (pickerIdeas && pickerIdeas.length > 0);
-          const size = isAnchor ? 34 : isStarred ? 28 : 24;
+          const size = isAnchor ? 34 : isStarred ? 28 : 22;
           return (
             <Marker
               key={card.id}
@@ -364,8 +398,8 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
               title={`${i + 1}. ${idea.title}`}
               icon={{
                 url: numberedIcon(i + 1),
-                scaledSize: { width: 32, height: 40 },
-                anchor: { x: 16, y: 40 },
+                scaledSize: { width: 30, height: 30 },
+                anchor: { x: 15, y: 15 },
               }}
               zIndex={1000 + i}
             />

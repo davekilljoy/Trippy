@@ -33,14 +33,17 @@ function themeColors() {
   const t = document.documentElement.dataset.theme;
   if (t === 'dark') return {
     ink: '%23e4e4e7', paper: '%230f0f11', accent: '%23a78bfa',
+    stroke: '%23ffffff',
     inkHex: '#e4e4e7', accentHex: '#a78bfa',
   };
   if (t === 'minimal') return {
     ink: '%23111111', paper: '%23ffffff', accent: '%235b21b6',
+    stroke: '%23ffffff',
     inkHex: '#111111', accentHex: '#5b21b6',
   };
   return {
     ink: '%2312100e', paper: '%23f2ece0', accent: '%239a7c3f',
+    stroke: '%23f2ece0',
     inkHex: '#12100e', accentHex: '#9a7c3f',
   };
 }
@@ -178,27 +181,27 @@ function FitBounds({ positions }) {
 
 function numberedIcon(n) {
   const t = themeColors();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
-    <circle cx="14" cy="14" r="13" fill="${t.ink}" stroke="${t.paper}" stroke-width="2"/>
-    <text x="14" y="18" text-anchor="middle" fill="${t.paper}" font-family="monospace" font-size="11" font-weight="bold">${n}</text>
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26">
+    <rect x="1" y="1" width="24" height="24" rx="6" fill="${t.ink}" stroke="${t.stroke}" stroke-width="2"/>
+    <text x="13" y="17" text-anchor="middle" fill="${t.paper}" font-family="monospace" font-size="11" font-weight="bold">${n}</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
 
 function hotelIcon() {
   const t = themeColors();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
-    <circle cx="14" cy="14" r="13" fill="${t.accent}" stroke="${t.paper}" stroke-width="2"/>
-    <text x="14" y="19" text-anchor="middle" fill="${t.paper}" font-family="monospace" font-size="13" font-weight="bold">H</text>
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26">
+    <rect x="1" y="1" width="24" height="24" rx="6" fill="${t.accent}" stroke="${t.stroke}" stroke-width="2"/>
+    <text x="13" y="18" text-anchor="middle" fill="${t.paper}" font-family="monospace" font-size="13" font-weight="bold">H</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
 
 function destinationIcon() {
   const t = themeColors();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28">
-    <circle cx="14" cy="14" r="13" fill="%23b5291c" stroke="${t.paper}" stroke-width="2"/>
-    <text x="14" y="19" text-anchor="middle" fill="${t.paper}" font-family="monospace" font-size="12" font-weight="bold">D</text>
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26">
+    <rect x="1" y="1" width="24" height="24" rx="6" fill="%23b5291c" stroke="${t.stroke}" stroke-width="2"/>
+    <text x="13" y="18" text-anchor="middle" fill="${t.paper}" font-family="monospace" font-size="12" font-weight="bold">D</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
@@ -253,8 +256,8 @@ export default function DayMap({ stops, legs, hotel, waypoints = [] }) {
             title={hotel.title || 'Hotel'}
             icon={{
               url: hotelIcon(),
-              scaledSize: { width: 28, height: 28 },
-              anchor: { x: 14, y: 14 },
+              scaledSize: { width: 26, height: 26 },
+              anchor: { x: 13, y: 13 },
             }}
           />
         )}
@@ -268,8 +271,8 @@ export default function DayMap({ stops, legs, hotel, waypoints = [] }) {
               title={stop.title || `Stop ${i + 1}`}
               icon={{
                 url: numberedIcon(i + 1),
-                scaledSize: { width: 28, height: 28 },
-                anchor: { x: 14, y: 14 },
+                scaledSize: { width: 26, height: 26 },
+                anchor: { x: 13, y: 13 },
               }}
             />
           ) : null
@@ -283,8 +286,8 @@ export default function DayMap({ stops, legs, hotel, waypoints = [] }) {
             title={wp.name}
             icon={{
               url: destinationIcon(),
-              scaledSize: { width: 28, height: 28 },
-              anchor: { x: 14, y: 14 },
+              scaledSize: { width: 26, height: 26 },
+              anchor: { x: 13, y: 13 },
             }}
           />
         ))}

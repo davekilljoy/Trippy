@@ -33,6 +33,7 @@
   --muted: #8a8478;
   --border: #d4cec2;
   --card-bg: #faf6ed;
+  --cat-attraction: #12100e;
 }
 
 /* --- Minimal theme --- */
@@ -43,6 +44,7 @@
   --accent-light: #7c3aed;
   --muted: #6b7280;
   --border: #e5e7eb;
+  --cat-attraction: #111111;
   --card-bg: #fafafa;
 }
 
@@ -56,6 +58,7 @@
   --muted: #71717a;
   --border: #27272a;
   --card-bg: #18181b;
+  --cat-attraction: #4a4a5a;
 }
 
 html {
