@@ -172,7 +172,7 @@ export async function* streamItinerary(cardIds) {
         if (parsed.error) throw new Error(parsed.error);
         if (parsed.delta) yield parsed.delta;
       } catch (e) {
-        if (e.message.startsWith('LM Studio') || e.message.startsWith('Failed')) throw e;
+        if (e.message.startsWith('LLM') || e.message.startsWith('Failed')) throw e;
       }
     }
   }

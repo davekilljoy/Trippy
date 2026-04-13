@@ -6,7 +6,7 @@ A collaborative trip planning app for Japan, built with React and Express. Colle
 
 - **Idea Board** — Add and browse trip ideas as cards across categories: attractions, restaurants, hotels, experiences, transport, and shopping
 - **Collaborative Approval** — Two-person approval system (David & Jen) — cards approved by both are promoted to the itinerary
-- **AI Idea Generation** — Describe what you're looking for and get AI-generated suggestions via a local LLM (LM Studio), enriched with live web search (Tavily)
+- **AI Idea Generation** — Describe what you're looking for and get AI-generated suggestions via a local LLM (llama.cpp), enriched with live web search (Tavily)
 - **Google Places Integration** — Search for real places, auto-fill addresses, coordinates, and photos
 - **Two-Phase Itinerary Builder** — AI proposes a day-by-day breakdown, you review and pick an optimization style (walkability, variety, etc.), then it finalizes with detailed schedules
 - **Interactive Day Maps** — Google Maps integration showing each day's stops with walking/transit routes and polyline overlays
@@ -23,7 +23,7 @@ A collaborative trip planning app for Japan, built with React and Express. Colle
 | Backend | Express 5, Node.js |
 | Database | SQLite (better-sqlite3) |
 | Maps | Google Maps API via `@vis.gl/react-google-maps` |
-| AI | LM Studio (OpenAI-compatible local LLM) |
+| AI | llama.cpp (OpenAI-compatible local LLM) |
 | Web Search | Tavily API |
 | Places | Google Places API |
 
@@ -32,7 +32,7 @@ A collaborative trip planning app for Japan, built with React and Express. Colle
 ### Prerequisites
 
 - Node.js 18+
-- [LM Studio](https://lmstudio.ai/) running locally (or any OpenAI-compatible API)
+- [llama.cpp](https://github.com/ggerganov/llama.cpp) running locally (or any OpenAI-compatible API)
 
 ### Environment Variables
 
@@ -43,10 +43,10 @@ Create a `.env` file in the project root:
 GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 
-# LM Studio (defaults to http://localhost:1234)
-LM_STUDIO_URL=http://localhost:1234
-LM_STUDIO_MODEL=your-model-name
-LM_STUDIO_API_KEY=
+# llama.cpp (defaults to http://127.0.0.1:8081)
+LLM_URL=http://127.0.0.1:8081
+LLM_MODEL=qwen3.5-27b
+LLM_API_KEY=
 
 # Tavily web search (optional, enriches AI suggestions)
 TAVILY_API_KEY=your_tavily_api_key
@@ -94,7 +94,7 @@ npm run build
 │       ├── api.js          # API client with SSE streaming helpers
 │       └── places.js       # Google Places search + category inference
 ├── server/
-│   └── index.js            # Express API — cards, itineraries, LLM, places proxy
+│   └── index.js            # Express API — cards, itineraries, llama.cpp LLM, places proxy
 ├── vite.config.js          # Vite config with API proxy
 └── package.json
 ```

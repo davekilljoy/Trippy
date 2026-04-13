@@ -862,28 +862,22 @@ async function generateTip(context) {
 
 // --- LLM + Image helpers ---
 
-const LM_STUDIO_URL = process.env.LM_STUDIO_URL || 'http://localhost:1234';
-const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL || '';
-const LM_STUDIO_API_KEY = process.env.LM_STUDIO_API_KEY || '';
+const LLM_URL = process.env.LLM_URL || 'http://127.0.0.1:8081';
+const LLM_MODEL = process.env.LLM_MODEL || '';
+const LLM_API_KEY = process.env.LLM_API_KEY || '';
 
 async function callLLM(messages, maxTokens = 4096) {
   const headers = { 'Content-Type': 'application/json' };
-  if (LM_STUDIO_API_KEY) headers['Authorization'] = `Bearer ${LM_STUDIO_API_KEY}`;
-
-  // Suppress thinking with empty think tags
-  const patched = [
-    ...messages,
-    { role: 'assistant', content: '<think>\n</think>\n', prefix: true },
-  ];
+  if (LLM_API_KEY) headers['Authorization'] = `Bearer ${LLM_API_KEY}`;
 
   const body = {
-    messages: patched,
+    messages,
     stream: false,
     max_tokens: maxTokens,
   };
-  if (LM_STUDIO_MODEL) body.model = LM_STUDIO_MODEL;
+  if (LLM_MODEL) body.model = LLM_MODEL;
 
-  const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+  const res = await fetch(`${LLM_URL}/v1/chat/completions`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
@@ -1594,16 +1588,15 @@ ${cardList}`;
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
-        { role: 'assistant', content: '<think>\n</think>\n', prefix: true },
       ],
       stream: true,
     };
-    if (LM_STUDIO_MODEL) body.model = LM_STUDIO_MODEL;
+    if (LLM_MODEL) body.model = LLM_MODEL;
 
     const headers = { 'Content-Type': 'application/json' };
-    if (LM_STUDIO_API_KEY) headers['Authorization'] = `Bearer ${LM_STUDIO_API_KEY}`;
+    if (LLM_API_KEY) headers['Authorization'] = `Bearer ${LLM_API_KEY}`;
 
-    const upstream = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+    const upstream = await fetch(`${LLM_URL}/v1/chat/completions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -1611,7 +1604,7 @@ ${cardList}`;
 
     if (!upstream.ok) {
       const errText = await upstream.text();
-      res.write(`data: ${JSON.stringify({ error: `LM Studio error: ${upstream.status} ${errText}` })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: `LLM error: ${upstream.status} ${errText}` })}\n\n`);
       res.write('data: [DONE]\n\n');
       return res.end();
     }
@@ -3239,16 +3232,15 @@ End with:
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
-        { role: 'assistant', content: '<think>\n</think>\n', prefix: true },
       ],
       stream: true,
     };
-    if (LM_STUDIO_MODEL) body.model = LM_STUDIO_MODEL;
+    if (LLM_MODEL) body.model = LLM_MODEL;
 
     const headers = { 'Content-Type': 'application/json' };
-    if (LM_STUDIO_API_KEY) headers['Authorization'] = `Bearer ${LM_STUDIO_API_KEY}`;
+    if (LLM_API_KEY) headers['Authorization'] = `Bearer ${LLM_API_KEY}`;
 
-    const upstream = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+    const upstream = await fetch(`${LLM_URL}/v1/chat/completions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
