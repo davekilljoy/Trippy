@@ -7,7 +7,16 @@ export default defineConfig({
     host: true,
     port: 5174,
     proxy: {
-      '/api': 'http://localhost:3737',
+      '/api': {
+        target: 'http://localhost:3737',
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            // ECONNRESET is expected when the browser cancels an in-flight
+            // request (e.g. unmounted <img>, HMR, navigation). Don't spam the log.
+            if (err.code !== 'ECONNRESET') console.error('[proxy]', err.message);
+          });
+        },
+      },
     },
   },
 });

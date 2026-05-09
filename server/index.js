@@ -3,6 +3,9 @@ import express from 'express';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { mkdirSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const db = new Database(join(__dirname, 'planner.db'));
@@ -32,6 +35,12 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS itinerary_cache (
     cache_key TEXT PRIMARY KEY,
     content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS photo_ref_remap (
+    old_ref TEXT PRIMARY KEY,
+    fresh_ref TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
@@ -549,7 +558,7 @@ async function searchPlace(query, region) {
     const params = new URLSearchParams({
       input: query,
       inputtype: 'textquery',
-      fields: 'place_id,name,formatted_address,geometry,photos,types,website,rating',
+      fields: 'place_id,name,formatted_address,geometry,photos,types,rating',
       key: GOOGLE_MAPS_API_KEY,
       locationbias: locationBias,
     });
@@ -715,20 +724,91 @@ app.get('/api/places/detail', async (req, res) => {
   }
 });
 
-// Photo proxy (Google requires API key in URL)
+// Photo proxy (Google requires API key in URL).
+// Google rotates photo_reference values; old refs eventually 400. We auto-heal
+// by re-enriching the originating card and persisting a stale->fresh ref remap
+// so the same broken URL keeps working across restarts. Bytes are cached on disk
+// keyed by the fresh ref, so stale refs sharing a fresh ref share one cache entry.
+const PHOTO_CACHE_DIR = join(__dirname, 'cache', 'photos');
+mkdirSync(PHOTO_CACHE_DIR, { recursive: true });
+
+function photoCachePath(ref) {
+  return join(PHOTO_CACHE_DIR, createHash('sha1').update(ref).digest('hex') + '.bin');
+}
+
+const refRemapInFlight = new Map();
+
+async function resolveFreshRef(oldRef) {
+  const cached = db.prepare('SELECT fresh_ref FROM photo_ref_remap WHERE old_ref = ?').get(oldRef);
+  if (cached) return cached.fresh_ref;
+  if (refRemapInFlight.has(oldRef)) return refRemapInFlight.get(oldRef);
+
+  const work = (async () => {
+    const card = db.prepare("SELECT id, title, address, lat, lng FROM cards WHERE image_url LIKE ?")
+      .get(`%ref=${oldRef}%`);
+    if (!card) return null;
+    const region = (card.lat != null && card.lng != null) ? `${card.lat},${card.lng}` : (card.address || '');
+    const fresh = await enrichPlace(card.title, region);
+    const m = fresh && fresh.image_url ? fresh.image_url.match(/ref=([^&]+)/) : null;
+    if (!m) return null;
+    const freshRef = m[1];
+    if (freshRef === oldRef) return null;
+    db.prepare("UPDATE cards SET image_url = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(fresh.image_url, card.id);
+    db.prepare('INSERT OR REPLACE INTO photo_ref_remap (old_ref, fresh_ref) VALUES (?, ?)')
+      .run(oldRef, freshRef);
+    return freshRef;
+  })().catch(() => null);
+
+  refRemapInFlight.set(oldRef, work);
+  try { return await work; }
+  finally { refRemapInFlight.delete(oldRef); }
+}
+
+async function serveCached(res, effectiveRef) {
+  try {
+    const buf = await readFile(photoCachePath(effectiveRef));
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=604800');
+    res.setHeader('X-Photo-Cache', 'hit');
+    res.send(buf);
+    return true;
+  } catch { return false; }
+}
+
 app.get('/api/places/photo', async (req, res) => {
   const { ref } = req.query;
   if (!ref || !GOOGLE_MAPS_API_KEY) return res.status(400).send('missing ref');
+  const ac = new AbortController();
+  req.on('close', () => ac.abort());
+
+  const tryFetch = (r) => fetch(placePhotoUrl(r, 800), { redirect: 'follow', signal: ac.signal });
+
   try {
-    const url = placePhotoUrl(ref, 800);
-    const upstream = await fetch(url, { redirect: 'follow' });
+    const remapped = db.prepare('SELECT fresh_ref FROM photo_ref_remap WHERE old_ref = ?').get(ref);
+    let effectiveRef = remapped ? remapped.fresh_ref : ref;
+
+    if (await serveCached(res, effectiveRef)) return;
+
+    let upstream = await tryFetch(effectiveRef);
+    if (!upstream.ok && !remapped && (upstream.status === 400 || upstream.status === 404)) {
+      const freshRef = await resolveFreshRef(ref);
+      if (freshRef) {
+        effectiveRef = freshRef;
+        if (await serveCached(res, effectiveRef)) return;
+        upstream = await tryFetch(freshRef);
+      }
+    }
     if (!upstream.ok) return res.status(502).send('photo fetch failed');
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    writeFile(photoCachePath(effectiveRef), buffer).catch(() => {});
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
     res.setHeader('Cache-Control', 'public, max-age=604800');
-    const buffer = Buffer.from(await upstream.arrayBuffer());
-    res.send(buffer);
-  } catch {
-    res.status(502).send('photo fetch failed');
+    res.setHeader('X-Photo-Cache', 'miss');
+    if (!res.writableEnded) res.send(buffer);
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    if (!res.headersSent) res.status(502).send('photo fetch failed');
   }
 });
 
