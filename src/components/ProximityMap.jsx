@@ -173,9 +173,17 @@ const DARK_MAP_STYLES = [
   { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1e1e35' }] },
 ];
 
-function buildMapStyles(hiddenCategories) {
+function buildMapStyles(hiddenCategories, showPois = true) {
   const isDark = document.documentElement.dataset.theme === 'dark';
   const styles = isDark ? [...DARK_MAP_STYLES] : [...CLEAN_MAP_STYLES];
+
+  if (!showPois) {
+    styles.push(
+      { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+      { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+    );
+    return styles;
+  }
 
   if (hiddenCategories && hiddenCategories.length > 0) {
     for (const cat of hiddenCategories) {
@@ -280,7 +288,7 @@ function FitPickerBounds({ ideas }) {
   return null;
 }
 
-export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPlace, hiddenCategories, onBoundsChange, pickerIdeas }) {
+export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPlace, hiddenCategories, showPois = true, onBoundsChange, pickerIdeas }) {
   const [poiPlace, setPoiPlace] = useState(null);  // { ...placeData, _pos: {lat, lng} }
   const [poiLoading, setPoiLoading] = useState(null); // {lat, lng} while loading
   const [poiAdding, setPoiAdding] = useState(false);
@@ -359,7 +367,7 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
         disableDefaultUI={true}
         zoomControl={true}
         onClick={handleMapClick}
-        styles={buildMapStyles(hiddenCategories)}
+        styles={buildMapStyles(hiddenCategories, showPois)}
       >
         <FitBounds positions={positions} />
         <PanToAnchor anchorCard={anchorCard} />

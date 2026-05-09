@@ -40,11 +40,18 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
   const [disabledCats, setDisabledCats] = useState(new Set());
   const [starredOnly, setStarredOnly] = useState(false);
   const [showMap, setShowMap] = useState(true);
+  const [showPois, setShowPois] = useState(true);
   const [listView, setListView] = useState(false);
   const [anchorId, setAnchorId] = useState(null);
   const [radiusKm, setRadiusKm] = useState(1.5);
   const [nearOpen, setNearOpen] = useState(false);
+  const [mapBounds, setMapBounds] = useState(null);
   const nearRef = useRef(null);
+
+  const handleBoundsChange = useCallback((bounds) => {
+    setMapBounds(bounds);
+    onBoundsChange?.(bounds);
+  }, [onBoundsChange]);
 
   // Notify parent of anchor changes
   useEffect(() => {
@@ -92,9 +99,23 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
 
   const anchorCard = anchorId ? cards.find(c => c.id === anchorId) : null;
 
+  // Effective map visibility (always on for mobile)
+  const mapActive = isMobile || showMap;
+
   // Compute distances, then filter by radius + sort
   const displayCards = useMemo(() => {
     if (!anchorCard || !anchorCard.lat || !anchorCard.lng) {
+      // When the map is showing, scope cards to its visible viewport
+      if (mapActive && mapBounds) {
+        return catFiltered
+          .filter(c => {
+            if (!c.lat || !c.lng) return false;
+            const lat = Number(c.lat), lng = Number(c.lng);
+            return lat >= mapBounds.south && lat <= mapBounds.north
+              && lng >= mapBounds.west && lng <= mapBounds.east;
+          })
+          .map(c => ({ ...c, _dist: null }));
+      }
       return catFiltered.map(c => ({ ...c, _dist: null }));
     }
 
@@ -114,7 +135,7 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
       if (b._dist === -1) return 1;
       return a._dist - b._dist;
     });
-  }, [catFiltered, anchorCard, radiusKm]);
+  }, [catFiltered, anchorCard, radiusKm, mapActive, mapBounds]);
 
   const handleSelectAnchor = useCallback((cardId) => {
     setAnchorId(prev => prev === cardId ? null : cardId);
@@ -202,9 +223,6 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
     })
   );
 
-  // On mobile, map is always on
-  const effectiveShowMap = isMobile || showMap;
-
   // Mobile: render toolbar + map-first layout with bottom panel
   if (isMobile) {
     return (
@@ -243,6 +261,12 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
               >
                 <Star size={14} fill="currentColor" /><span className="pill-label">Starred</span>
               </button>
+              <button
+                className={`pill pill-pois ${showPois ? 'active' : ''}`}
+                onClick={() => setShowPois(p => !p)}
+              >
+                <span className="pill-label">POIs</span>
+              </button>
             </div>
             <button className="add-btn-mobile" onClick={onAdd}>+</button>
           </div>
@@ -256,7 +280,8 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
             onSelectAnchor={handleSelectAnchor}
             onAddPlace={onAddPlace}
             hiddenCategories={disabledCatsArray}
-            onBoundsChange={onBoundsChange}
+            showPois={showPois}
+            onBoundsChange={handleBoundsChange}
             pickerIdeas={pickerIdeas}
           />
         </div>
@@ -407,13 +432,25 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
           >
             Map
           </button>
+          <button
+            className={`pill pill-pois ${showPois ? 'active' : ''}`}
+            onClick={() => setShowPois(p => !p)}
+            title={showPois ? 'Hide Google POIs' : 'Show Google POIs'}
+          >
+            POIs
+          </button>
           <button className="add-btn" onClick={onAdd}>+ Add Idea</button>
         </div>
       </div>
 
       {displayCards.length === 0 ? (
         <div className="board-empty">
-          <p>{anchorId ? 'No places within this radius.' : disabledCats.size > 0 ? 'No ideas match these filters.' : 'No ideas yet. Add your first one!'}</p>
+          <p>{
+            anchorId ? 'No places within this radius.'
+            : (mapActive && mapBounds && cards.length > 0) ? 'No ideas in this map view. Pan or zoom out to see more.'
+            : disabledCats.size > 0 ? 'No ideas match these filters.'
+            : 'No ideas yet. Add your first one!'
+          }</p>
         </div>
       ) : showMap ? (
         <div className="board-map-layout">
@@ -431,7 +468,8 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
               onSelectAnchor={handleSelectAnchor}
               onAddPlace={onAddPlace}
               hiddenCategories={disabledCatsArray}
-              onBoundsChange={onBoundsChange}
+              showPois={showPois}
+              onBoundsChange={handleBoundsChange}
               pickerIdeas={pickerIdeas}
             />
           </div>

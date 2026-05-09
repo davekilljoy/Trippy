@@ -379,12 +379,14 @@
 }
 
 /* --- Map toggle pill --- */
-.pill-map {
+.pill-map,
+.pill-pois {
   border-color: var(--ink);
   color: var(--muted);
 }
 
-.pill-map.active {
+.pill-map.active,
+.pill-pois.active {
   background: var(--ink);
   color: var(--paper);
   border-color: var(--ink);
