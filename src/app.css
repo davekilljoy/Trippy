@@ -267,7 +267,33 @@ body::before {
 
 .nav-btn:hover:not(.active) {
   border-color: var(--ink);
+}
+
+/* Booking calendar button */
+.booking-calendar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
   color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.booking-calendar-btn:hover {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.booking-calendar-btn svg {
+  flex-shrink: 0;
 }
 
 /* --- Shared UI --- */

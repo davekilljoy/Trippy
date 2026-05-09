@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { APIProvider } from '@vis.gl/react-google-maps';
-import { Palette, Sun, Moon, Flame } from 'lucide-react';
+import { Palette, Sun, Moon, Flame, Calendar } from 'lucide-react';
 import Board from './components/Board.jsx';
 import ItineraryPanel from './components/ItineraryPanel.jsx';
 import CardModal from './components/CardModal.jsx';
 import IdeaPicker from './components/IdeaPicker.jsx';
 import TripDetailsModal from './components/TripDetailsModal.jsx';
+import BookingCalendar from './components/BookingCalendar.jsx';
 import { fetchCards, fetchSettings, saveSettings, createCard, updateCard, deleteCard, toggleStar, bulkCreateCards, generateIdeas, fetchFlights, createFlight, updateFlight, deleteFlight, backfillTiming } from './lib/api.js';
 import { inferCategory } from './lib/places.js';
 
@@ -102,6 +103,7 @@ export default function App() {
   const [children, setChildren] = useState([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [showTripModal, setShowTripModal] = useState(false);
+  const [showBookingCalendar, setShowBookingCalendar] = useState(false);
 
   // Flights (lifted from ItineraryPanel)
   const [flights, setFlights] = useState([]);
@@ -303,6 +305,14 @@ export default function App() {
           <span className="header-edit-hint">Edit</span>
         </div>
         <ThemePicker theme={theme} setTheme={setTheme} />
+        <button 
+          className="app-btn booking-calendar-btn"
+          onClick={() => setShowBookingCalendar(true)}
+          title="Booking Calendar"
+        >
+          <Calendar size={16} />
+          Bookings
+        </button>
         <nav className="app-nav">
           <button
             className={`nav-btn ${view === 'board' ? 'active' : ''}`}
@@ -427,6 +437,14 @@ export default function App() {
             <span className="gen-done-status">{genStatus}</span>
           )}
         </div>
+      )}
+
+      {/* Booking calendar modal */}
+      {showBookingCalendar && (
+        <BookingCalendar
+          arrivalDate={dateFrom}
+          onClose={() => setShowBookingCalendar(false)}
+        />
       )}
     </APIProvider>
   );

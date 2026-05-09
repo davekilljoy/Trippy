@@ -3424,5 +3424,154 @@ app.delete('/api/flights/:id', (req, res) => {
   res.json({ deleted: true });
 });
 
+// --- Booking Calendar ---
+
+// Extract booking deadlines from card timing data
+app.get('/api/booking-calendar', (req, res) => {
+  const { arrivalDate } = req.query;
+  if (!arrivalDate) {
+    return res.status(400).json({ error: 'arrivalDate required (YYYY-MM-DD format)' });
+  }
+
+  const cards = db.prepare('SELECT id, title, category, timing, address, image_url, link_url FROM cards WHERE timing IS NOT NULL AND timing != \'\'').all();
+
+  const bookingItems = [];
+  const arrival = new Date(arrivalDate);
+
+  for (const card of cards) {
+    const deadline = extractBookingDeadline(card.timing, arrival);
+    if (deadline) {
+      bookingItems.push({
+        id: card.id,
+        title: card.title,
+        category: card.category,
+        address: card.address,
+        image_url: card.image_url,
+        link_url: card.link_url,
+        deadline: deadline.date,
+        daysBefore: deadline.daysBefore,
+        urgency: deadline.urgency,
+        note: deadline.note,
+      });
+    }
+  }
+
+  // Sort by urgency (most urgent first)
+  bookingItems.sort((a, b) => a.daysBefore - b.daysBefore);
+
+  res.json(bookingItems);
+});
+
+// Extract booking deadline from timing text
+function extractBookingDeadline(timingText, arrivalDate) {
+  const text = timingText.toLowerCase();
+
+  // Patterns to match (order matters - more specific first)
+  const patterns = [
+    // "buy tickets on the 10th of each month" - monthly sales
+    { regex: /buy\s+tickets\s+on\s+the\s+(\d+)(?:st|nd|rd|th)?\s+of\s+each\s+month/i, type: 'monthly' },
+
+    // "book months ahead" / "book months in advance"
+    { regex: /book\s+months\s+(ahead|in\s+advance)/i, multiplier: 2, unit: 'month' },
+
+    // "book 1-2 weeks in advance" / "book weeks in advance"
+    { regex: /book\s+(\d+)\s+-\s*(\d+)\s+weeks?\s+in\s+advance/i, multiplier: 7, unit: 'week', range: true },
+    { regex: /book\s+weeks?\s+in\s+advance/i, multiplier: 2, unit: 'week' },
+
+    // "book tickets in advance" / "buy tickets in advance"
+    { regex: /(book|buy)\s+tickets\s+in\s+advance/i, multiplier: 7, unit: 'day' },
+
+    // "advance reservations are highly recommended"
+    { regex: /advance\s+reservations/i, multiplier: 14, unit: 'day' },
+
+    // "lottery" entries
+    { regex: /lottery/i, type: 'lottery' },
+
+    // "purchase tickets online beforehand"
+    { regex: /purchase\s+tickets\s+online\s+beforehand/i, multiplier: 3, unit: 'day' },
+
+    // "buy tickets online beforehand"
+    { regex: /buy\s+tickets\s+online\s+beforehand/i, multiplier: 3, unit: 'day' },
+
+    // "buy tickets online in advance"
+    { regex: /buy\s+tickets\s+online\s+in\s+advance/i, multiplier: 7, unit: 'day' },
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern.regex);
+    if (match) {
+      try {
+        if (pattern.type === 'monthly') {
+          const dayOfMonth = parseInt(match[1]);
+          // Calculate the date for the day of month in the previous month (for monthly sales)
+          const deadline = new Date(arrivalDate);
+          const currentMonth = deadline.getMonth();
+          const currentYear = deadline.getFullYear();
+
+          // Set to the target day of the previous month
+          deadline.setMonth(currentMonth - 1);
+          deadline.setDate(dayOfMonth);
+          deadline.setHours(0, 0, 0, 0);
+
+          const arrivalCopy = new Date(arrivalDate);
+          arrivalCopy.setHours(0, 0, 0, 0);
+          const daysBefore = Math.ceil((arrivalCopy - deadline) / (1000 * 60 * 60 * 24));
+
+          return {
+            date: deadline.toISOString().split('T')[0],
+            daysBefore: daysBefore,
+            urgency: daysBefore < 7 ? 'critical' : daysBefore < 14 ? 'high' : 'medium',
+            note: `Tickets go on sale on the ${dayOfMonth}${ordinal(dayOfMonth)} of each month`,
+          };
+        } else if (pattern.type === 'lottery') {
+          // Lottery items typically need entry 1-2 months before
+          const daysBefore = 45;
+          const deadline = new Date(arrivalDate);
+          deadline.setDate(deadline.getDate() - daysBefore);
+
+          return {
+            date: deadline.toISOString().split('T')[0],
+            daysBefore: daysBefore,
+            urgency: 'high',
+            note: 'Entry by lottery - apply well in advance',
+          };
+        } else {
+          let amount;
+          if (pattern.range && match[2]) {
+            // Handle range like "1-2 weeks" - use the higher number
+            amount = Math.max(parseInt(match[1]), parseInt(match[2]));
+          } else {
+            amount = parseInt(match[1]) || 1;
+          }
+
+          const daysToAdd = amount * pattern.multiplier;
+          const deadline = new Date(arrivalDate);
+          deadline.setDate(deadline.getDate() - daysToAdd);
+
+          const unitName = pattern.unit + (amount > 1 ? 's' : '');
+
+          return {
+            date: deadline.toISOString().split('T')[0],
+            daysBefore: daysToAdd,
+            urgency: daysToAdd >= 60 ? 'critical' : daysToAdd >= 30 ? 'high' : daysToAdd >= 7 ? 'medium' : 'low',
+            note: `Book ${amount} ${unitName} in advance`,
+          };
+        }
+      } catch (err) {
+        console.error('Error extracting booking deadline:', err.message);
+        continue;
+      }
+    }
+  }
+
+  return null;
+}
+
+function ordinal(n) {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return s[(v - 20) % 10] || s[v] || s[0];
+}
+
 const PORT = process.env.PORT || 3737;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

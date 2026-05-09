@@ -394,3 +394,11 @@ export async function deleteFlight(id) {
   if (!res.ok) throw new Error('Failed to delete flight');
   return res.json();
 }
+
+// --- Booking Calendar ---
+
+export async function fetchBookingCalendar(arrivalDate) {
+  const res = await fetch(`${BASE}/booking-calendar?arrivalDate=${arrivalDate}`);
+  if (!res.ok) return [];
+  return res.json();
+}
