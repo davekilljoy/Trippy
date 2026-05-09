@@ -5,14 +5,14 @@ import './ProximityMap.css';
 function themeColors() {
   const t = document.documentElement.dataset.theme;
   if (t === 'dark') return {
-    ink: '%23e4e4e7', paper: '%230f0f11', accent: '%23a78bfa',
-    stroke: '%23ffffff',
-    inkHex: '#e4e4e7', accentHex: '#a78bfa',
+    ink: '%23e8e1d3', paper: '%231a1816', accent: '%23bf9f5e',
+    stroke: '%231a1816',
+    inkHex: '#e8e1d3', accentHex: '#bf9f5e',
   };
   if (t === 'minimal') return {
-    ink: '%23111111', paper: '%23ffffff', accent: '%235b21b6',
-    stroke: '%23ffffff',
-    inkHex: '#111111', accentHex: '#5b21b6',
+    ink: '%231c1d20', paper: '%23ece9e1', accent: '%237a6745',
+    stroke: '%23ece9e1',
+    inkHex: '#1c1d20', accentHex: '#7a6745',
   };
   return {
     ink: '%2312100e', paper: '%23f2ece0', accent: '%239a7c3f',
@@ -103,8 +103,10 @@ function categoryIcon(category, isAnchor, isStarred) {
   return `data:image/svg+xml;charset=UTF-8,${svg}`;
 }
 
-// Auto-fit bounds on initial mount only
-function FitBounds({ positions }) {
+// Auto-fit bounds on initial mount only.
+// `bottomInsetPx` reserves space at the bottom of the viewport (e.g. for a sheet
+// that overlays the map) so all positions land in the visible-to-user area.
+function FitBounds({ positions, bottomInsetPx = 0 }) {
   const map = useMap();
   const fittedRef = useRef(false);
   useEffect(() => {
@@ -112,12 +114,12 @@ function FitBounds({ positions }) {
     fittedRef.current = true;
     const bounds = new google.maps.LatLngBounds();
     positions.forEach(p => bounds.extend(p));
-    map.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
+    map.fitBounds(bounds, { top: 40, right: 40, bottom: 40 + bottomInsetPx, left: 40 });
     const listener = google.maps.event.addListenerOnce(map, 'idle', () => {
       if (map.getZoom() > 16) map.setZoom(16);
     });
     return () => google.maps.event.removeListener(listener);
-  }, [map, positions]);
+  }, [map, positions, bottomInsetPx]);
   return null;
 }
 
@@ -157,20 +159,20 @@ const CLEAN_MAP_STYLES = [
 
 const DARK_MAP_STYLES = [
   ...CLEAN_MAP_STYLES,
-  { elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a2e' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#8888a0' }] },
-  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#2a2a40' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#252540' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a1a2e' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#2d2d50' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#6a6a80' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e0e1a' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4a4a60' }] },
-  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1e1e35' }] },
-  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#7a7a90' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1a2e1a' }] },
-  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1e1e35' }] },
+  { elementType: 'geometry', stylers: [{ color: '#1a1816' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1816' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#807868' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#2c2825' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2c2825' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a1816' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#36322d' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#6e6659' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f0d0b' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#5a5249' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#23201c' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#807868' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1f2218' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#23201c' }] },
 ];
 
 function buildMapStyles(hiddenCategories, showPois = true) {
@@ -199,8 +201,10 @@ function buildMapStyles(hiddenCategories, showPois = true) {
   return styles;
 }
 
-// Emit viewport bounds + area name on map idle
-function ViewportTracker({ onBoundsChange }) {
+// Emit viewport bounds + area name on map idle.
+// `bottomInsetPx` shrinks the reported southern boundary so cards hidden behind
+// an overlay (e.g. mobile bottom sheet) aren't counted as "in view".
+function ViewportTracker({ onBoundsChange, bottomInsetPx = 0 }) {
   const map = useMap();
   const timerRef = useRef(null);
   const geocoderRef = useRef(null);
@@ -213,10 +217,23 @@ function ViewportTracker({ onBoundsChange }) {
       if (!bounds) return;
       const ne = bounds.getNorthEast();
       const sw = bounds.getSouthWest();
-      const centerLat = (ne.lat() + sw.lat()) / 2;
+
+      // Crop the bottom of the bounds rectangle by the inset (linear-lat
+      // approximation; precision is fine at city scale).
+      let southAdjusted = sw.lat();
+      if (bottomInsetPx > 0) {
+        const totalH = map.getDiv()?.offsetHeight || 0;
+        if (totalH > 0) {
+          const insetFrac = Math.min(0.9, bottomInsetPx / totalH);
+          const latRange = ne.lat() - sw.lat();
+          southAdjusted = sw.lat() + latRange * insetFrac;
+        }
+      }
+
+      const centerLat = (ne.lat() + southAdjusted) / 2;
       const centerLng = (ne.lng() + sw.lng()) / 2;
       const boundsObj = {
-        north: ne.lat(), south: sw.lat(),
+        north: ne.lat(), south: southAdjusted,
         east: ne.lng(), west: sw.lng(),
         centerLat, centerLng,
       };
@@ -255,7 +272,7 @@ function ViewportTracker({ onBoundsChange }) {
       google.maps.event.removeListener(listener);
       clearTimeout(timerRef.current);
     };
-  }, [map, onBoundsChange]);
+  }, [map, onBoundsChange, bottomInsetPx]);
 
   return null;
 }
@@ -288,7 +305,7 @@ function FitPickerBounds({ ideas }) {
   return null;
 }
 
-export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPlace, hiddenCategories, showPois = true, onBoundsChange, pickerIdeas }) {
+export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPlace, hiddenCategories, showPois = true, onBoundsChange, pickerIdeas, bottomInsetPx = 0 }) {
   const [poiPlace, setPoiPlace] = useState(null);  // { ...placeData, _pos: {lat, lng} }
   const [poiLoading, setPoiLoading] = useState(null); // {lat, lng} while loading
   const [poiAdding, setPoiAdding] = useState(false);
@@ -369,9 +386,9 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
         onClick={handleMapClick}
         styles={buildMapStyles(hiddenCategories, showPois)}
       >
-        <FitBounds positions={positions} />
+        <FitBounds positions={positions} bottomInsetPx={bottomInsetPx} />
         <PanToAnchor anchorCard={anchorCard} />
-        <ViewportTracker onBoundsChange={onBoundsChange} />
+        <ViewportTracker onBoundsChange={onBoundsChange} bottomInsetPx={bottomInsetPx} />
 
         {geoCards.map(card => {
           const isAnchor = card.id === anchorId;

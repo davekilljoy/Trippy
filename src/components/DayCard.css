@@ -96,10 +96,10 @@
   font-weight: 700;
 }
 
-.day-card-pacing--light { background: #e8f5e9; color: #2e7d32; }
-.day-card-pacing--moderate { background: #fff8e1; color: #f57f17; }
-.day-card-pacing--full { background: #fff3e0; color: #e65100; }
-.day-card-pacing--intense { background: #fce4ec; color: #c62828; }
+.day-card-pacing--light    { background: color-mix(in srgb, var(--accent) 8%,  transparent); color: var(--ink); }
+.day-card-pacing--moderate { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--ink); }
+.day-card-pacing--full     { background: color-mix(in srgb, var(--red)    14%, transparent); color: var(--red); }
+.day-card-pacing--intense  { background: color-mix(in srgb, var(--red)    24%, transparent); color: var(--red); }
 
 /* Stops list */
 .day-card-stops {

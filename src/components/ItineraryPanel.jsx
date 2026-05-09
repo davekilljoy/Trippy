@@ -11,7 +11,29 @@ import SkeletonBuilder from './SkeletonBuilder.jsx';
 import SpotCard from './SpotCard.jsx';
 import './ItineraryPanel.css';
 
-export default function ItineraryPanel({ starredCards, pendingCards, flights, onEditFlight, onDeleteFlight }) {
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatItinDateRange(from, to) {
+  if (!from || !to) return null;
+  const a = new Date(from + 'T00:00:00');
+  const b = new Date(to + 'T00:00:00');
+  if (isNaN(a) || isNaN(b)) return null;
+  const sameMonth = a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+  if (sameMonth) return `${a.getDate()}–${b.getDate()} ${MONTHS_SHORT[a.getMonth()]}`;
+  if (a.getFullYear() === b.getFullYear()) return `${a.getDate()} ${MONTHS_SHORT[a.getMonth()]} – ${b.getDate()} ${MONTHS_SHORT[b.getMonth()]}`;
+  return `${a.getDate()} ${MONTHS_SHORT[a.getMonth()]} ${a.getFullYear()} – ${b.getDate()} ${MONTHS_SHORT[b.getMonth()]} ${b.getFullYear()}`;
+}
+
+function countItinDays(from, to) {
+  if (!from || !to) return null;
+  const a = new Date(from + 'T00:00:00');
+  const b = new Date(to + 'T00:00:00');
+  if (isNaN(a) || isNaN(b)) return null;
+  const diff = Math.round((b - a) / 86400000);
+  return diff > 0 ? diff : null;
+}
+
+export default function ItineraryPanel({ starredCards, pendingCards, flights, dateFrom, dateTo, destination, onEditFlight, onDeleteFlight }) {
   // Itinerary state
   const [versions, setVersions] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -267,9 +289,22 @@ export default function ItineraryPanel({ starredCards, pendingCards, flights, on
     );
   }
 
+  const itinDateRange = formatItinDateRange(dateFrom, dateTo);
+  const itinDays = countItinDays(dateFrom, dateTo);
+
+  const itinHeader = (itinDateRange || itinDays || destination) ? (
+    <div className="itinerary-meta">
+      {itinDateRange && <span>{itinDateRange}</span>}
+      {itinDays && (<><span className="itinerary-meta-sep">·</span><span>{itinDays} days</span></>)}
+      {destination && (<><span className="itinerary-meta-sep">·</span><span>{destination}</span></>)}
+    </div>
+  ) : null;
+
   // All other phases: standard layout with sidebar + main
   return (
-    <div className="itinerary-layout">
+    <div className="itinerary-wrap">
+      {itinHeader}
+      <div className="itinerary-layout">
       <aside className="itinerary-sidebar">
         {sidebarHeader}
 
@@ -358,6 +393,7 @@ export default function ItineraryPanel({ starredCards, pendingCards, flights, on
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }

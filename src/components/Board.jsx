@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Star, X, Landmark, UtensilsCrossed, Hotel, Sparkles, TrainFront, ShoppingBag, MapPin, LayoutGrid, List } from 'lucide-react';
+import { Star, X, Landmark, UtensilsCrossed, Hotel, Sparkles, TrainFront, ShoppingBag, MapPin, LayoutGrid, List, Map as MapIcon, Eye, Plus, ChevronUp, ChevronDown, ChevronLeft, ExternalLink, Pencil, Compass, Info } from 'lucide-react';
 
 const CATEGORY_ICONS = {
   attraction: Landmark,
@@ -15,6 +15,11 @@ import { haversine, formatDistance, formatTravelTime } from '../lib/geo.js';
 import './Board.css';
 
 const CATEGORIES = ['attraction', 'restaurant', 'hotel', 'experience', 'shopping'];
+
+// Mobile sheet always reserves at least the peek-state height at the bottom
+// of the map. This keeps the "places in view" count honest — cards behind
+// the sheet shouldn't count as visible. Must match `.mobile-sheet--peek` height.
+const MOBILE_SHEET_PEEK_PX = 132;
 
 const CATEGORY_COLORS = {
   attraction: 'var(--cat-attraction)',
@@ -47,6 +52,12 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
   const [nearOpen, setNearOpen] = useState(false);
   const [mapBounds, setMapBounds] = useState(null);
   const nearRef = useRef(null);
+
+  // Mobile sheet state — controls the persistent bottom sheet over the full-screen map.
+  // Peek = thin preview of top card; list = scrollable all-cards; detail = single card view;
+  // anchor = derived (when anchorId is set, shows nearby places + radius).
+  const [sheetMode, setSheetMode] = useState('peek');
+  const [selectedCardId, setSelectedCardId] = useState(null);
 
   const handleBoundsChange = useCallback((bounds) => {
     setMapBounds(bounds);
@@ -155,6 +166,30 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
     setNearOpen(false);
   }, []);
 
+  // --- Mobile sheet flow ---
+  // Tapping a marker on mobile (or a list item) opens the detail view rather than entering
+  // anchor mode immediately. From detail, the user explicitly chooses "What's around" to anchor.
+  const handleMobileSelectCard = useCallback((cardId) => {
+    setSelectedCardId(cardId);
+  }, []);
+
+  const handleCloseDetail = useCallback(() => {
+    setSelectedCardId(null);
+  }, []);
+
+  const handleAroundCurrent = useCallback(() => {
+    setSelectedCardId(prevSel => {
+      if (prevSel) setAnchorId(prevSel);
+      return null;
+    });
+  }, []);
+
+  const handleCloseAnchor = useCallback(() => {
+    setAnchorId(null);
+    setSelectedCardId(null);
+    setSheetMode('peek');
+  }, []);
+
   const renderCards = () => (
     displayCards.map(card => {
       const dist = card._dist != null && card._dist > 0 ? card._dist : null;
@@ -223,174 +258,398 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
     })
   );
 
-  // Mobile: render toolbar + map-first layout with bottom panel
+  // Mobile: render toolbar + map-first layout with persistent bottom sheet
   if (isMobile) {
+    const selectedCard = selectedCardId ? cards.find(c => c.id === selectedCardId) : null;
+    const peekCard = displayCards[0];
+    const sheetState = anchorId ? 'anchor' : (selectedCard ? 'detail' : sheetMode);
+    const renderListItem = (card, opts = {}) => {
+      const dist = card._dist != null && card._dist > 0 ? card._dist : null;
+      const distBadge = dist != null ? `${formatDistance(dist)} · ${formatTravelTime(dist)}` : null;
+      return (
+        <div
+          key={card.id}
+          role="button"
+          tabIndex={0}
+          className="sheet-list-item"
+          onClick={() => handleMobileSelectCard(card.id)}
+        >
+          {card.image_url
+            ? <img className="sheet-list-img" src={card.image_url} alt="" />
+            : <span className="sheet-list-img sheet-list-img--placeholder">
+                {(() => { const Icon = CATEGORY_ICONS[card.category] || MapPin; return <Icon size={18} />; })()}
+              </span>
+          }
+          <div className="sheet-list-info">
+            <span className="sheet-list-title">{card.title}</span>
+            <span className="sheet-list-meta">
+              {distBadge && <span className="sheet-list-dist">{distBadge}</span>}
+              {!distBadge && card.rating && <><Star size={10} fill="currentColor" /> {card.rating}</>}
+              {!distBadge && card.rating && card.address && <span className="sheet-list-sep">·</span>}
+              {!distBadge && card.address && <span className="sheet-list-addr">{card.address}</span>}
+            </span>
+            {card.description && <span className="sheet-list-desc">{card.description}</span>}
+          </div>
+          <button
+            className="sheet-list-star"
+            onClick={(e) => { e.stopPropagation(); onStar(card.id); }}
+            aria-label={card.starred ? 'Unstar' : 'Star'}
+          >
+            <Star size={14} fill={card.starred ? 'currentColor' : 'none'} />
+          </button>
+        </div>
+      );
+    };
+
     return (
       <div className="board board--mobile">
-        {/* Toolbar: + button right-aligned, filters scrollable below */}
+        {/* Toolbar: text-link filters scroll horizontally, + button at right */}
         <div className="board-toolbar-mobile">
           <div className="board-toolbar-top">
-            <div className="filter-pills filter-pills--scroll">
+            <div className="filter-row--scroll">
               {CATEGORIES.map(cat => {
-                const Icon = CATEGORY_ICONS[cat];
                 const active = !disabledCats.has(cat);
                 return (
                   <button
                     key={cat}
-                    className={`pill ${active ? 'active' : ''}`}
+                    className={`filter-link ${active ? 'active' : 'disabled'}`}
                     onClick={() => toggleCat(cat)}
-                    style={active ? { background: CATEGORY_COLORS[cat], borderColor: CATEGORY_COLORS[cat], color: '#fff' } : undefined}
                   >
-                    {Icon && <Icon size={14} />}<span className="pill-label">{cat}</span>
+                    <span className="filter-dot" style={{ background: CATEGORY_COLORS[cat] }} />
+                    {cat}
                   </button>
                 );
               })}
+              <span className="filter-link-sep" aria-hidden="true">·</span>
               <button
-                className={`pill pill-near ${anchorId ? 'active' : ''}`}
+                className={`filter-link ${starredOnly ? 'active' : ''}`}
+                onClick={() => setStarredOnly(s => !s)}
+              >
+                <Star size={11} fill={starredOnly ? 'currentColor' : 'none'} />
+                Starred
+              </button>
+              <button
+                className={`filter-link ${anchorId ? 'active' : ''}`}
                 onClick={() => anchorId ? handleClearNear() : setNearOpen(o => !o)}
               >
                 {anchorCard
                   ? <>Near {anchorCard.title.length > 12 ? anchorCard.title.slice(0, 12) + '…' : anchorCard.title}</>
-                  : 'Nearest'
+                  : 'Near'
                 }
-                {anchorId && <span className="near-clear" onClick={(e) => { e.stopPropagation(); handleClearNear(); }}><X size={12} /></span>}
+                {anchorId && (
+                  <span className="near-clear" onClick={(e) => { e.stopPropagation(); handleClearNear(); }}>
+                    <X size={11} />
+                  </span>
+                )}
               </button>
               <button
-                className={`pill pill-starred ${starredOnly ? 'active' : ''}`}
-                onClick={() => setStarredOnly(s => !s)}
-              >
-                <Star size={14} fill="currentColor" /><span className="pill-label">Starred</span>
-              </button>
-              <button
-                className={`pill pill-pois ${showPois ? 'active' : ''}`}
+                className={`filter-link ${showPois ? 'active' : ''}`}
                 onClick={() => setShowPois(p => !p)}
               >
-                <span className="pill-label">POIs</span>
+                <Eye size={11} /> POIs
               </button>
             </div>
-            <button className="add-btn-mobile" onClick={onAdd}>+</button>
+            <button className="add-btn-mobile" onClick={onAdd} aria-label="Add idea">
+              <Plus size={14} />
+            </button>
           </div>
         </div>
 
-        {/* Full-screen map */}
+        {/* Map — fills the upper portion. Marker tap opens the detail sheet, not anchor mode.
+            bottomInsetPx tells the map to fit/report bounds excluding the sheet area, so the
+            "places in view" count matches what the user actually sees above the sheet. */}
         <div className="board-map-full">
           <ProximityMap
             cards={catFiltered}
-            anchorId={anchorId}
-            onSelectAnchor={handleSelectAnchor}
+            anchorId={anchorId || selectedCardId}
+            onSelectAnchor={handleMobileSelectCard}
             onAddPlace={onAddPlace}
             hiddenCategories={disabledCatsArray}
             showPois={showPois}
             onBoundsChange={handleBoundsChange}
             pickerIdeas={pickerIdeas}
+            bottomInsetPx={MOBILE_SHEET_PEEK_PX}
           />
         </div>
 
-        {/* Bottom panel — slides up when a marker is tapped */}
-        {anchorId && (
-          <div className="mobile-panel">
-            <div className="mobile-panel-handle" onClick={handleClearNear}>
-              <span className="mobile-panel-bar" />
-            </div>
-            <div className="mobile-panel-header">
-              <span className="mobile-panel-title">
-                Near {anchorCard?.title || 'selected'}
-              </span>
-              <div className="near-radius">
-                <input
-                  type="range"
-                  min={0.3}
-                  max={10}
-                  step={0.1}
-                  value={radiusKm}
-                  onChange={e => setRadiusKm(Number(e.target.value))}
-                  className="near-slider"
-                />
-                <span className="near-radius-label">{radiusKm.toFixed(1)}km</span>
-              </div>
-            </div>
-            <div className="mobile-panel-list">
-              {displayCards.filter(c => c.id !== anchorId).length === 0 ? (
-                <div className="board-empty"><p>No places within this radius.</p></div>
+        {/* Persistent bottom sheet — peek / list / detail / anchor states */}
+        <div className={`mobile-sheet mobile-sheet--${sheetState}`}>
+
+          {sheetState === 'peek' && (
+            <>
+              <button
+                type="button"
+                className="mobile-sheet-handle"
+                onClick={() => setSheetMode('list')}
+                aria-label="Expand list"
+              >
+                <span className="mobile-sheet-bar" />
+              </button>
+              {peekCard ? (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="sheet-peek"
+                  onClick={() => handleMobileSelectCard(peekCard.id)}
+                >
+                  {peekCard.image_url
+                    ? <img className="sheet-peek-img" src={peekCard.image_url} alt="" />
+                    : <span className="sheet-peek-img sheet-peek-img--placeholder">
+                        {(() => { const Icon = CATEGORY_ICONS[peekCard.category] || MapPin; return <Icon size={18} />; })()}
+                      </span>
+                  }
+                  <div className="sheet-peek-info">
+                    <span className="sheet-peek-title">{peekCard.title}</span>
+                    <span className="sheet-peek-meta">
+                      {peekCard.rating && <><Star size={10} fill="currentColor" /> {peekCard.rating}</>}
+                      {peekCard.rating && peekCard.address && <span className="sheet-list-sep">·</span>}
+                      {peekCard.address && <span className="sheet-peek-addr">{peekCard.address}</span>}
+                    </span>
+                  </div>
+                  <span className="sheet-peek-count">
+                    <ChevronUp size={14} /> {displayCards.length}
+                  </span>
+                </div>
               ) : (
-                displayCards.filter(c => c.id !== anchorId).map(card => {
-                  const dist = card._dist != null && card._dist > 0 ? card._dist : null;
-                  const badge = dist != null ? `${formatDistance(dist)} · ${formatTravelTime(dist)}` : null;
-                  return (
-                    <div
-                      key={card.id}
-                      className="mobile-panel-item"
-                      onClick={() => onEdit(card)}
-                    >
-                      {card.image_url && <img src={card.image_url} alt="" className="mobile-panel-img" />}
-                      <div className="mobile-panel-info">
-                        <span className="mobile-panel-name">{card.title}</span>
-                        {badge && <span className="mobile-panel-dist">{badge}</span>}
-                        {card.timing && <span className="mobile-panel-tip">{card.timing}</span>}
-                        <span className="mobile-panel-cat">{(() => { const Icon = CATEGORY_ICONS[card.category] || MapPin; return <Icon size={10} />; })()}</span>
-                      </div>
-                      <button
-                        className="mobile-panel-star"
-                        onClick={(e) => { e.stopPropagation(); onStar(card.id); }}
-                      >
-                        <Star size={14} fill={card.starred ? 'currentColor' : 'none'} />
-                      </button>
-                    </div>
-                  );
-                })
+                <div className="sheet-peek sheet-peek--empty">
+                  No places in this map view. Pan or zoom out.
+                </div>
               )}
-            </div>
-          </div>
-        )}
+            </>
+          )}
+
+          {sheetState === 'list' && (
+            <>
+              <button
+                type="button"
+                className="mobile-sheet-handle"
+                onClick={() => setSheetMode('peek')}
+                aria-label="Collapse list"
+              >
+                <span className="mobile-sheet-bar" />
+              </button>
+              <div className="mobile-sheet-header">
+                <span className="sheet-header-title">
+                  {displayCards.length} place{displayCards.length === 1 ? '' : 's'} in view
+                </span>
+                <button
+                  type="button"
+                  className="sheet-header-btn"
+                  onClick={() => setSheetMode('peek')}
+                  aria-label="Collapse"
+                >
+                  <ChevronDown size={16} />
+                </button>
+              </div>
+              <div className="mobile-sheet-list">
+                {displayCards.length === 0
+                  ? <div className="board-empty"><p>No places in this map view.</p></div>
+                  : displayCards.map(card => renderListItem(card))
+                }
+              </div>
+            </>
+          )}
+
+          {sheetState === 'detail' && selectedCard && (
+            <>
+              <div className="mobile-sheet-handle-static">
+                <span className="mobile-sheet-bar" />
+              </div>
+              <div className="mobile-sheet-header">
+                <button
+                  type="button"
+                  className="sheet-header-btn"
+                  onClick={handleCloseDetail}
+                >
+                  <ChevronLeft size={16} /> Back
+                </button>
+                <button
+                  type="button"
+                  className="sheet-header-btn"
+                  onClick={() => onEdit(selectedCard)}
+                  aria-label="Edit"
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
+              <div className="mobile-sheet-detail">
+                {selectedCard.image_url && (
+                  <img className="sheet-detail-img" src={selectedCard.image_url} alt="" />
+                )}
+                <h2 className="sheet-detail-title">{selectedCard.title}</h2>
+                <div className="sheet-detail-meta">
+                  {selectedCard.category && (
+                    <span className="sheet-detail-cat">
+                      <span className="filter-dot" style={{ background: CATEGORY_COLORS[selectedCard.category] }} />
+                      {selectedCard.category}
+                    </span>
+                  )}
+                  {selectedCard.rating && (
+                    <>
+                      <span className="sheet-list-sep">·</span>
+                      <span className="sheet-detail-rating">
+                        <Star size={11} fill="currentColor" /> {selectedCard.rating}
+                      </span>
+                    </>
+                  )}
+                </div>
+                {selectedCard.address && (
+                  <p className="sheet-detail-addr">{selectedCard.address}</p>
+                )}
+                {selectedCard.description && (
+                  <p className="sheet-detail-desc">{selectedCard.description}</p>
+                )}
+                {selectedCard.timing && (
+                  <p className="sheet-detail-timing">
+                    <Info size={13} className="sheet-detail-timing-icon" />
+                    {selectedCard.timing}
+                  </p>
+                )}
+                {(selectedCard.david_note || selectedCard.jen_note) && (
+                  <div className="sheet-detail-notes">
+                    {selectedCard.david_note && (
+                      <div className="note">
+                        <span className="avatar">D</span>
+                        <span className="note-text">{selectedCard.david_note}</span>
+                      </div>
+                    )}
+                    {selectedCard.jen_note && (
+                      <div className="note">
+                        <span className="avatar jen">J</span>
+                        <span className="note-text">{selectedCard.jen_note}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="sheet-detail-actions">
+                  <button
+                    type="button"
+                    className="sheet-detail-around"
+                    onClick={handleAroundCurrent}
+                    disabled={!selectedCard.lat || !selectedCard.lng}
+                  >
+                    <Compass size={14} /> What’s around this
+                  </button>
+                  <button
+                    type="button"
+                    className={`sheet-detail-star ${selectedCard.starred ? 'active' : ''}`}
+                    onClick={() => onStar(selectedCard.id)}
+                  >
+                    <Star size={14} fill={selectedCard.starred ? 'currentColor' : 'none'} />
+                    {selectedCard.starred ? 'Starred' : 'Star'}
+                  </button>
+                  {selectedCard.link_url && (
+                    <a
+                      className="sheet-detail-link"
+                      href={selectedCard.link_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink size={14} /> Visit
+                    </a>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {sheetState === 'anchor' && anchorCard && (
+            <>
+              <div className="mobile-sheet-handle-static">
+                <span className="mobile-sheet-bar" />
+              </div>
+              <div className="mobile-sheet-header">
+                <button
+                  type="button"
+                  className="sheet-header-btn"
+                  onClick={handleCloseAnchor}
+                >
+                  <ChevronLeft size={16} /> Back
+                </button>
+                <span className="sheet-header-title sheet-header-title--anchor">
+                  Near {anchorCard.title.length > 18 ? anchorCard.title.slice(0, 18) + '…' : anchorCard.title}
+                </span>
+                <div className="near-radius">
+                  <input
+                    type="range"
+                    min={0.3}
+                    max={10}
+                    step={0.1}
+                    value={radiusKm}
+                    onChange={e => setRadiusKm(Number(e.target.value))}
+                    className="near-slider"
+                  />
+                  <span className="near-radius-label">{radiusKm.toFixed(1)}km</span>
+                </div>
+              </div>
+              <div className="mobile-sheet-list">
+                {displayCards.filter(c => c.id !== anchorId).length === 0
+                  ? <div className="board-empty"><p>No places within this radius.</p></div>
+                  : displayCards.filter(c => c.id !== anchorId).map(card => renderListItem(card))
+                }
+              </div>
+            </>
+          )}
+
+        </div>
       </div>
     );
   }
 
-  // Desktop layout (unchanged)
+  // Desktop layout
   return (
     <div className={`board ${showMap ? 'board--with-map' : ''}`}>
       <div className="board-toolbar">
-        <button
-          className="view-toggle"
-          onClick={() => setListView(v => !v)}
-          title={listView ? 'Card view' : 'List view'}
-        >
-          {listView ? <LayoutGrid size={16} /> : <List size={16} />}
-        </button>
-        <div className="filter-pills">
+        <div className="toolbar-group toolbar-group--view">
+          <button
+            className="view-toggle"
+            onClick={() => setListView(v => !v)}
+            title={listView ? 'Card view' : 'List view'}
+          >
+            {listView ? <LayoutGrid size={14} /> : <List size={14} />}
+          </button>
+        </div>
+
+        <div className="toolbar-group toolbar-group--filters">
           {CATEGORIES.map(cat => {
-            const Icon = CATEGORY_ICONS[cat];
             const active = !disabledCats.has(cat);
             return (
               <button
                 key={cat}
-                className={`pill ${active ? 'active' : ''}`}
+                className={`filter-link ${active ? 'active' : 'disabled'}`}
                 onClick={() => toggleCat(cat)}
-                style={active ? { background: CATEGORY_COLORS[cat], borderColor: CATEGORY_COLORS[cat], color: '#fff' } : undefined}
+                title={active ? `Hide ${cat}` : `Show ${cat}`}
               >
-                {Icon && <Icon size={12} />} {cat}
+                <span className="filter-dot" style={{ background: CATEGORY_COLORS[cat] }} />
+                {cat}
               </button>
             );
           })}
-
+          <span className="filter-link-sep" aria-hidden="true">·</span>
           <button
-            className={`pill pill-starred ${starredOnly ? 'active' : ''}`}
+            className={`filter-link ${starredOnly ? 'active' : ''}`}
             onClick={() => setStarredOnly(s => !s)}
           >
-            <Star size={12} fill="currentColor" /> Starred
+            <Star size={11} fill={starredOnly ? 'currentColor' : 'none'} />
+            Starred
           </button>
+          <span className="filter-link-sep" aria-hidden="true">·</span>
 
-          {/* Near filter */}
-          <div className="near-filter" ref={nearRef}>
+          {/* Near anchor filter */}
+          <div className="filter-near" ref={nearRef}>
             <button
-              className={`pill pill-near ${anchorId ? 'active' : ''}`}
+              className={`filter-link ${anchorId ? 'active' : ''}`}
               onClick={() => anchorId ? handleClearNear() : setNearOpen(o => !o)}
             >
               {anchorCard
                 ? <>Near {anchorCard.title.length > 18 ? anchorCard.title.slice(0, 18) + '…' : anchorCard.title}</>
-                : 'Near'
+                : 'Near anchor'
               }
-              {anchorId && <span className="near-clear" onClick={(e) => { e.stopPropagation(); handleClearNear(); }}><X size={12} /></span>}
+              {anchorId && (
+                <span className="near-clear" onClick={(e) => { e.stopPropagation(); handleClearNear(); }}>
+                  <X size={11} />
+                </span>
+              )}
             </button>
 
             {anchorId && (
@@ -425,21 +684,25 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
             )}
           </div>
         </div>
-        <div className="board-actions">
+
+        <div className="toolbar-group toolbar-group--tools">
           <button
-            className={`pill pill-map ${showMap ? 'active' : ''}`}
+            className={`tool-btn ${showMap ? 'active' : ''}`}
             onClick={handleToggleMap}
+            title={showMap ? 'Hide map' : 'Show map'}
           >
-            Map
+            <MapIcon size={14} />
           </button>
           <button
-            className={`pill pill-pois ${showPois ? 'active' : ''}`}
+            className={`tool-btn ${showPois ? 'active' : ''}`}
             onClick={() => setShowPois(p => !p)}
             title={showPois ? 'Hide Google POIs' : 'Show Google POIs'}
           >
-            POIs
+            <Eye size={14} />
           </button>
-          <button className="add-btn" onClick={onAdd}>+ Add Idea</button>
+          <button className="add-link" onClick={onAdd}>
+            <Plus size={14} /> Add idea
+          </button>
         </div>
       </div>
 

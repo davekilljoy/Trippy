@@ -36,10 +36,6 @@ export default function IdeaCard({ card, onEdit, onDelete, onStar, distanceBadge
             {(() => { const Icon = CATEGORY_ICONS[card.category] || MapPin; return <Icon size={32} />; })()}
           </div>
         )}
-        <span className="card-category-badge" style={{ background: CATEGORY_COLORS[card.category] || 'var(--ink)' }}>
-          {(() => { const Icon = CATEGORY_ICONS[card.category] || MapPin; return <Icon size={12} />; })()}
-        </span>
-        {card.rating && <span className="card-rating-badge">{card.rating}★</span>}
         <button
           className={`card-star-btn ${card.starred ? 'active' : ''}`}
           onClick={(e) => { e.stopPropagation(); onStar(); }}
@@ -61,6 +57,26 @@ export default function IdeaCard({ card, onEdit, onDelete, onStar, distanceBadge
             )}
           </div>
         </div>
+
+        {(card.category || card.rating) && (
+          <div className="card-meta">
+            {card.category && (
+              <span className="card-meta-cat">
+                <span
+                  className="card-meta-cat-dot"
+                  style={{ background: CATEGORY_COLORS[card.category] || 'var(--muted)' }}
+                />
+                {card.category}
+              </span>
+            )}
+            {card.category && card.rating && <span className="card-meta-sep">·</span>}
+            {card.rating && (
+              <span className="card-meta-rating">
+                <Star size={11} /> {card.rating}
+              </span>
+            )}
+          </div>
+        )}
 
         {card.address && <p className="card-address">{card.address}</p>}
         {distanceBadge && (

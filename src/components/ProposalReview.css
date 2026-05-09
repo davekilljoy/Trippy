@@ -113,23 +113,23 @@
 }
 
 .proposal-pacing--light {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--ink);
 }
 
 .proposal-pacing--moderate {
-  background: #fff8e1;
-  color: #f57f17;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--ink);
 }
 
 .proposal-pacing--full {
-  background: #fff3e0;
-  color: #e65100;
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
 }
 
 .proposal-pacing--intense {
-  background: #fce4ec;
-  color: #c62828;
+  background: color-mix(in srgb, var(--red) 24%, transparent);
+  color: var(--red);
 }
 
 .proposal-day-stops {

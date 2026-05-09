@@ -13,33 +13,33 @@ const CLEAN_MAP_STYLES = [
 
 const DARK_MAP_STYLES = [
   ...CLEAN_MAP_STYLES,
-  { elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a2e' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#8888a0' }] },
-  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#2a2a40' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#252540' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a1a2e' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#2d2d50' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#6a6a80' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e0e1a' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4a4a60' }] },
-  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1e1e35' }] },
-  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#7a7a90' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1a2e1a' }] },
-  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1e1e35' }] },
+  { elementType: 'geometry', stylers: [{ color: '#1a1816' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1816' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#807868' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#2c2825' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2c2825' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a1816' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#36322d' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#6e6659' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f0d0b' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#5a5249' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#23201c' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#807868' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1f2218' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#23201c' }] },
 ];
 
 function themeColors() {
   const t = document.documentElement.dataset.theme;
   if (t === 'dark') return {
-    ink: '%23e4e4e7', paper: '%230f0f11', accent: '%23a78bfa',
-    stroke: '%23ffffff',
-    inkHex: '#e4e4e7', accentHex: '#a78bfa',
+    ink: '%23e8e1d3', paper: '%231a1816', accent: '%23bf9f5e',
+    stroke: '%231a1816',
+    inkHex: '#e8e1d3', accentHex: '#bf9f5e',
   };
   if (t === 'minimal') return {
-    ink: '%23111111', paper: '%23ffffff', accent: '%235b21b6',
-    stroke: '%23ffffff',
-    inkHex: '#111111', accentHex: '#5b21b6',
+    ink: '%231c1d20', paper: '%23ece9e1', accent: '%237a6745',
+    stroke: '%23ece9e1',
+    inkHex: '#1c1d20', accentHex: '#7a6745',
   };
   return {
     ink: '%2312100e', paper: '%23f2ece0', accent: '%239a7c3f',

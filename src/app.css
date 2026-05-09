@@ -17,14 +17,23 @@
   --text-lg:  1.25rem;
   --text-xl:  1.5rem;
   --text-2xl: 1.75rem;
-  --font-display: 'DM Sans', 'Inter', system-ui, sans-serif;
-  --font-body: 'DM Sans', 'Inter', system-ui, sans-serif;
-  --font-jp: 'DM Sans', 'Inter', system-ui, sans-serif;
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'DM Mono', ui-monospace, SFMono-Regular, Consolas, 'Cascadia Mono', monospace;
+  --font-jp: 'Shippori Mincho', 'Hiragino Mincho ProN', YuMincho, 'Noto Serif JP', serif;
   --radius: 6px;
+  /* App shell header height — used by viewport-anchored layouts (Itinerary). */
+  --app-header-h: 116px;
 }
 
-/* --- Warm theme (default) --- */
-:root {
+@media (max-width: 700px) {
+  :root {
+    --app-header-h: 92px;
+  }
+}
+
+/* --- Warm theme (default — also opt-in addressable via data-theme) --- */
+:root,
+[data-theme="warm"] {
   --ink: #12100e;
   --paper: #f2ece0;
   --red: #b5291c;
@@ -36,29 +45,30 @@
   --cat-attraction: #12100e;
 }
 
-/* --- Minimal theme --- */
+/* --- Minimal theme — cool paper, muted gold, no Linear/Notion violet --- */
 [data-theme="minimal"] {
-  --ink: #111111;
-  --paper: #ffffff;
-  --accent: #5b21b6;
-  --accent-light: #7c3aed;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --cat-attraction: #111111;
-  --card-bg: #fafafa;
+  --ink: #1c1d20;
+  --paper: #ece9e1;
+  --red: #a83020;
+  --accent: #7a6745;
+  --accent-light: #a08a5e;
+  --muted: #7c7a72;
+  --border: #d2cfc6;
+  --card-bg: #f1eee5;
+  --cat-attraction: #1c1d20;
 }
 
-/* --- Dark theme --- */
+/* --- Dark theme — night paper: warm charcoal, aged-cream ink, gold accent --- */
 [data-theme="dark"] {
-  --ink: #e4e4e7;
-  --paper: #0f0f11;
-  --red: #ef4444;
-  --accent: #a78bfa;
-  --accent-light: #c4b5fd;
-  --muted: #71717a;
-  --border: #27272a;
-  --card-bg: #18181b;
-  --cat-attraction: #4a4a5a;
+  --ink: #e8e1d3;
+  --paper: #1a1816;
+  --red: #d44a3a;
+  --accent: #bf9f5e;
+  --accent-light: #d8bd80;
+  --muted: #807868;
+  --border: #2c2825;
+  --card-bg: #23201c;
+  --cat-attraction: #807868;
 }
 
 html {
@@ -153,147 +163,153 @@ body::before {
 }
 
 /* --- Layout --- */
+/* App shell: two-row header on desktop (title block + nav).
+ * On mobile the header collapses to a single row + nav row, with the
+ * metadata line tap-to-expand. */
 .app-header {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  background: var(--paper);
+}
+
+.app-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.2rem 2rem;
-  border-bottom: 1px solid var(--border);
-  gap: 0.8rem;
-  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 1.6rem 0.4rem;
+}
+
+/* Title + metadata is one big tap target — opens trip modal on desktop,
+ * expands the metadata accordion on mobile. */
+.app-title-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0.2rem 0.3rem;
+  margin-left: -0.3rem;
+  border-radius: var(--radius);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  transition: background 0.15s;
+}
+
+.app-title-block:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
 }
 
 .app-title {
   font-family: var(--font-display);
   font-style: italic;
-  font-weight: 600;
+  font-weight: 500;
   font-size: var(--text-2xl);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+  color: var(--ink);
 }
 
-.app-title span {
+.app-title-jp {
   font-family: var(--font-jp);
   font-style: normal;
-  font-weight: 500;
-  margin-left: 0.5rem;
+  font-weight: 400;
+  margin-left: 0.55rem;
   color: var(--muted);
   font-size: var(--text-md);
+  letter-spacing: 0.04em;
 }
 
-.header-details {
+.app-meta {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.5rem;
   flex-wrap: wrap;
-  cursor: pointer;
-  padding: 0.3rem 0.5rem;
-  border-radius: var(--radius);
-  transition: background 0.15s;
-}
-
-.header-details:hover {
-  background: rgba(0, 0, 0, 0.04);
-}
-
-.header-chip {
-  font-size: var(--text-sm);
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-.header-label {
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  margin-right: 0.3rem;
-}
-
-.header-muted {
-  color: var(--muted);
-}
-
-.header-sep {
-  color: var(--border);
-  font-size: var(--text-sm);
-  margin: 0 0.1rem;
-}
-
-.header-edit-hint {
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  opacity: 0;
-  transition: opacity 0.15s;
-  margin-left: 0.2rem;
-}
-
-.header-details:hover .header-edit-hint {
-  opacity: 1;
-}
-
-.app-nav {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.nav-btn {
   font-family: var(--font-body);
   font-size: var(--text-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.45rem 1rem;
-  border: 1px solid var(--border);
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.app-meta--inline {
+  margin-top: 0.05rem;
+}
+
+.app-meta--collapsed {
+  padding: 0.5rem 1.6rem 0.7rem;
+  border-top: 1px dashed var(--border);
+}
+
+.app-meta-sep {
+  color: var(--border);
+}
+
+.app-meta-edit {
+  margin-left: auto;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+}
+
+.app-meta-edit:hover {
+  text-decoration: underline;
+}
+
+/* Three peer nav tabs — Board / Itinerary / Bookings.
+ * Quiet text-link treatment with an ink underline on the active tab. */
+.app-nav {
+  display: flex;
+  gap: 0.2rem;
+  padding: 0 1.6rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.nav-tab {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  padding: 0.7rem 1rem 0.75rem;
+  border: none;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s;
+  position: relative;
+  transition: color 0.15s;
+  margin-bottom: -1px;
 }
 
-.nav-btn:first-child {
-  border-radius: var(--radius) 0 0 var(--radius);
+.nav-tab::after {
+  content: '';
+  position: absolute;
+  left: 0.7rem;
+  right: 0.7rem;
+  bottom: 0;
+  height: 2px;
+  background: transparent;
+  transition: background 0.15s;
 }
 
-.nav-btn:last-child {
-  border-radius: 0 var(--radius) var(--radius) 0;
-}
-
-.nav-btn.active {
-  background: var(--ink);
-  color: var(--paper);
-  border-color: var(--ink);
-}
-
-.nav-btn:hover:not(.active) {
-  border-color: var(--ink);
-}
-
-/* Booking calendar button */
-.booking-calendar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0.45rem 1rem;
-  border: 1px solid var(--border);
-  background: var(--card-bg);
+.nav-tab:hover:not(.active) {
   color: var(--ink);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: all 0.15s;
 }
 
-.booking-calendar-btn:hover {
-  border-color: var(--ink);
+.nav-tab.active {
+  color: var(--ink);
+}
+
+.nav-tab.active::after {
   background: var(--ink);
-  color: var(--paper);
-}
-
-.booking-calendar-btn svg {
-  flex-shrink: 0;
 }
 
 /* --- Shared UI --- */
@@ -311,26 +327,17 @@ a:hover {
   text-decoration: underline;
 }
 
-/* --- Floating generate bar (Board only) --- */
+/* --- Generate bar (Board only) ---
+ * Inline above the Board canvas. No longer the floating ChatGPT pill. */
 .gen-bar {
-  position: fixed;
-  bottom: 1.2rem;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 90%;
-  max-width: 600px;
   background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 100px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
-  z-index: 50;
-  padding: 0.35rem 0.35rem 0.35rem 1.2rem;
-  transition: left 0.25s ease;
+  border-bottom: 1px solid var(--border);
+  padding: 0.6rem 1.6rem;
+  position: relative;
 }
 
-.gen-bar--over-map {
-  left: 75%;
-  max-width: 700px;
+.gen-bar--inline {
+  /* Inline is now the only mode — kept as a class for clarity in JSX */
 }
 
 .gen-bar-form {
@@ -340,13 +347,13 @@ a:hover {
 }
 
 .gen-near-pill {
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 0.25rem 0.6rem;
-  border-radius: 100px;
-  background: var(--accent);
-  color: var(--paper);
+  letter-spacing: 0.01em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--ink);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -368,12 +375,11 @@ a:hover {
 
 .gen-submit {
   font-family: var(--font-body);
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.5rem 1.1rem;
-  border: none;
-  border-radius: 100px;
+  font-size: var(--text-sm);
+  letter-spacing: 0.01em;
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
   background: var(--ink);
   color: var(--paper);
   cursor: pointer;
@@ -424,71 +430,115 @@ a:hover {
 }
 
 .gen-done-status {
-  position: absolute;
-  top: -1.6rem;
-  left: 50%;
-  transform: translateX(-50%);
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-family: var(--font-body);
   font-size: var(--text-xs);
   color: var(--accent);
   white-space: nowrap;
 }
 
+/* --- Cmd+K command palette (desktop fast-add) --- */
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 18vh;
+  animation: cmdk-fade 120ms ease-out;
+}
+
+@keyframes cmdk-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.cmdk-card {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px color-mix(in srgb, var(--ink) 25%, transparent);
+  width: 92%;
+  max-width: 560px;
+  padding: 0.75rem 1rem 0.6rem;
+}
+
+.cmdk-input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  outline: none;
+  padding: 0.4rem 0;
+}
+
+.cmdk-input::placeholder {
+  color: var(--muted);
+}
+
+.cmdk-hint {
+  margin-top: 0.4rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.cmdk-hint span {
+  color: var(--ink);
+}
+
 /* --- Mobile --- */
 @media (max-width: 700px) {
-  .app-header {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.3rem 0.5rem;
-    gap: 0.3rem;
+  .app-header-row {
+    padding: 0.55rem 0.9rem 0.4rem;
+    gap: 0.5rem;
   }
 
   .app-title {
+    font-size: var(--text-xl);
+  }
+
+  .app-title-jp {
+    font-size: var(--text-sm);
+    margin-left: 0.4rem;
+  }
+
+  /* On phones, the always-on metadata strip is too noisy. Hide the inline
+   * version; user taps the title to expand the collapsed metadata block. */
+  .app-meta--inline {
     display: none;
   }
 
-  /* Nav comes first visually on mobile */
+  .app-meta--collapsed {
+    padding: 0.5rem 0.9rem 0.6rem;
+  }
+
   .app-nav {
-    order: -1;
-    flex-shrink: 0;
+    padding: 0 0.4rem;
+    gap: 0;
+    justify-content: space-around;
   }
 
-  .nav-btn {
-    font-size: var(--text-xs);
-    padding: 0.3rem 0.7rem;
+  .nav-tab {
+    flex: 1;
+    text-align: center;
+    padding: 0.7rem 0.5rem 0.75rem;
   }
 
-  .header-details {
-    gap: 0.25rem;
-    padding: 0;
-    flex-shrink: 0;
-  }
-
-  .header-chip--dates {
-    font-size: var(--text-xs);
-  }
-
-  /* On mobile, hide everything except date range */
-  .header-details .header-chip:not(.header-chip--dates),
-  .header-details .header-sep,
-  .header-details .header-edit-hint {
-    display: none;
+  .nav-tab::after {
+    left: 0.5rem;
+    right: 0.5rem;
   }
 
   .gen-bar {
-    width: 92%;
-    bottom: 0.5rem;
-    padding: 0.3rem 0.3rem 0.3rem 0.8rem;
-  }
-
-  .gen-bar--over-map {
-    left: 50%;
-    max-width: 600px;
-  }
-
-  /* Hide gen bar when mobile panel is open */
-  .board--mobile .mobile-panel ~ .gen-bar {
-    display: none;
+    padding: 0.5rem 0.9rem;
   }
 
   /* Prevent iOS zoom on focus — inputs must be >= 16px */

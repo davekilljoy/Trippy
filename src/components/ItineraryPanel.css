@@ -1,6 +1,33 @@
+.itinerary-wrap {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--app-header-h, 100px));
+  min-height: 0;
+}
+
+/* Date header for the Itinerary view — surfaces trip metadata that the global
+ * shell header no longer carries. Quiet, mono, sentence-case. */
+.itinerary-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 1.4rem;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.itinerary-meta-sep {
+  color: var(--border);
+}
+
 .itinerary-layout {
   display: flex;
-  height: calc(100vh - 60px);
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -296,7 +323,7 @@
 }
 
 .itinerary-error {
-  background: #fde8e6;
+  background: color-mix(in srgb, var(--red) 10%, var(--paper));
   border: 1px solid var(--red);
   color: var(--red);
   padding: 0.7rem 1rem;

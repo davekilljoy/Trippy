@@ -30,7 +30,9 @@ function formatLongDate(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-export default function BookingCalendar({ arrivalDate, onClose }) {
+export default function BookingCalendar({ arrivalDate, onClose, inline = false }) {
+  const wrapperClass = `booking-calendar${inline ? ' booking-calendar--inline' : ''}`;
+  const wrapperClick = inline ? undefined : onClose;
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -58,7 +60,7 @@ export default function BookingCalendar({ arrivalDate, onClose }) {
 
   if (loading) {
     return (
-      <div className="booking-calendar" onClick={onClose}>
+      <div className={wrapperClass} onClick={wrapperClick}>
         <div className="booking-calendar-inner" onClick={e => e.stopPropagation()}>
           <div className="booking-calendar-loading">Loading booking timeline…</div>
         </div>
@@ -68,7 +70,7 @@ export default function BookingCalendar({ arrivalDate, onClose }) {
 
   if (error) {
     return (
-      <div className="booking-calendar" onClick={onClose}>
+      <div className={wrapperClass} onClick={wrapperClick}>
         <div className="booking-calendar-inner" onClick={e => e.stopPropagation()}>
           <div className="booking-calendar-error">
             <AlertCircle size={28} />
@@ -100,7 +102,7 @@ export default function BookingCalendar({ arrivalDate, onClose }) {
   const formattedArrival = formatLongDate(arrivalDate);
 
   return (
-    <div className="booking-calendar" onClick={onClose}>
+    <div className={wrapperClass} onClick={wrapperClick}>
       <div className="booking-calendar-inner" onClick={e => e.stopPropagation()}>
         <header className="booking-calendar-header">
           <h2><Calendar size={20} /> Booking Timeline</h2>

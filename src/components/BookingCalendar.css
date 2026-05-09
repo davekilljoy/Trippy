@@ -23,6 +23,33 @@
   --bc-rail:     var(--border);
 }
 
+/* Route mode: BookingCalendar lives as a peer view alongside Board / Itinerary,
+ * not a modal. Drops backdrop, fixed positioning, and centered max-width so the
+ * calendar fills the canvas naturally below the app header. */
+.booking-calendar.booking-calendar--inline {
+  position: static;
+  inset: auto;
+  background: transparent;
+  z-index: auto;
+  align-items: stretch;
+  padding: 0;
+  overflow-y: visible;
+  display: block;
+}
+
+.booking-calendar.booking-calendar--inline .booking-calendar-inner {
+  max-width: none;
+  max-height: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--paper);
+}
+
+.booking-calendar.booking-calendar--inline .booking-calendar-close {
+  display: none;
+}
+
 [data-theme="dark"] .booking-calendar {
   --bc-critical: #f87171;
   --bc-high:     #fb923c;
@@ -291,7 +318,7 @@
 
 .booking-card[data-urgency="critical"] .booking-card-badge { background: var(--bc-critical); }
 .booking-card[data-urgency="high"]     .booking-card-badge { background: var(--bc-high); }
-.booking-card[data-urgency="medium"]   .booking-card-badge { background: var(--bc-medium); color: #1a1a1a; }
+.booking-card[data-urgency="medium"]   .booking-card-badge { background: var(--bc-medium); color: var(--ink); }
 .booking-card[data-urgency="past"]     .booking-card-badge { background: var(--bc-past); }
 
 .booking-card-content h4 {
