@@ -130,6 +130,16 @@ export async function backfillTiming() {
   return res.json();
 }
 
+export async function backfillLeadTime({ reset = false } = {}) {
+  const res = await fetch(`${BASE}/cards/backfill-lead-time`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reset }),
+  });
+  if (!res.ok) return {};
+  return res.json();
+}
+
 export async function bulkCreateCards(cards) {
   const res = await fetch(`${BASE}/cards/bulk`, {
     method: 'POST',

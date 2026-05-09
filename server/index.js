@@ -111,6 +111,7 @@ try { db.exec('ALTER TABLE cards ADD COLUMN business_status TEXT'); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN rating REAL'); } catch {}
 try { db.exec('ALTER TABLE itineraries ADD COLUMN mode TEXT NOT NULL DEFAULT \'v1\''); } catch {}
 try { db.exec('ALTER TABLE cards ADD COLUMN starred INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE cards ADD COLUMN lead_time_days INTEGER'); } catch {}
 try { db.exec('UPDATE cards SET starred = 1 WHERE david_approved = 1 AND jen_approved = 1'); } catch {}
 
 
@@ -209,8 +210,8 @@ app.post('/api/cards', async (req, res) => {
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(card);
 
-  // Auto-generate description + timing in background if not provided
-  if (title && (!description || !timing)) {
+  // Auto-generate description + timing + lead-time in background if not provided
+  if (title) {
     (async () => {
       try {
         const context = await buildCardContext(card);
@@ -221,6 +222,10 @@ app.post('/api/cards', async (req, res) => {
         if (!timing) {
           const tip = await generateTip(context);
           if (tip) db.prepare("UPDATE cards SET timing = ?, updated_at = datetime('now') WHERE id = ?").run(tip.trim(), card.id);
+        }
+        const lead = await generateLeadTime(context);
+        if (lead) {
+          db.prepare("UPDATE cards SET lead_time_days = ?, updated_at = datetime('now') WHERE id = ?").run(lead.lead_time_days, card.id);
         }
       } catch {}
     })();
@@ -234,7 +239,7 @@ app.patch('/api/cards/:id', (req, res) => {
   const allowed = [
     'title', 'description', 'address', 'lat', 'lng', 'image_url', 'link_url',
     'category', 'timing', 'david_note', 'jen_note',
-    'starred'
+    'starred', 'lead_time_days'
   ];
   const sets = [];
   const params = [];
@@ -940,6 +945,50 @@ async function generateTip(context) {
   ], 80);
 }
 
+// Returns { lead_time_days: integer, reason: string } or null on parse error.
+// 0 means walk-in / no advance booking. Higher numbers = more advance booking required.
+async function generateLeadTime(context) {
+  const prompt = `${context}
+
+Based on the place info and reviews above, how many days in advance does a visitor typically need to book or reserve this venue?
+
+Respond with ONLY a JSON object — no markdown, no commentary:
+{"lead_time_days": <integer>, "reason": "<short reason, max 15 words>"}
+
+Calibration:
+- 0 = walk-in / no booking needed (parks, shrines, observation decks open to all, casual shops, most attractions)
+- 1-3 = book a few days ahead (some restaurants with limited tables, popular casual dining with online slots)
+- 7 = book 1 week ahead (popular restaurants requiring reservation, mid-tier sushi, themed cafes)
+- 14 = book 2 weeks ahead (well-known dining, Shibuya Sky / Tokyo Skytree premium slots, weekend reservations)
+- 30 = book 1 month ahead (high-demand restaurants, popular kaiseki)
+- 60+ = book 2+ months ahead (top sushi like Sukiyabashi Jiro tier, Michelin tasting menus, exclusive omakase)
+- 45 = lottery entries (Ghibli Museum, Nintendo Museum, special factory tours requiring lottery application)
+- For monthly ticket sales (like Ghibli where tickets release on a fixed day each month), pick the average wait, e.g. 25-30.
+
+If genuinely unclear or if the place is a generic walk-in venue, return 0.
+DO NOT invent a number for places that clearly don't need booking.`;
+
+  const raw = await callLLM([
+    { role: 'system', content: 'You return strict JSON only. No markdown fences, no prose, just the JSON object.' },
+    { role: 'user', content: prompt },
+  ], 80);
+
+  try {
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const obj = JSON.parse(match[0]);
+    const days = Number(obj.lead_time_days);
+    if (!Number.isFinite(days) || days < 0) return null;
+    return {
+      lead_time_days: Math.round(days),
+      reason: String(obj.reason || '').slice(0, 200),
+    };
+  } catch {
+    return null;
+  }
+}
+
 // --- LLM + Image helpers ---
 
 const LLM_URL = process.env.LLM_URL || 'http://127.0.0.1:8081';
@@ -1206,6 +1255,33 @@ app.post('/api/cards/backfill-timing', async (req, res) => {
       if (tip) {
         db.prepare("UPDATE cards SET timing = ?, updated_at = datetime('now') WHERE id = ?").run(tip.trim(), card.id);
         results.push({ id: card.id, title: card.title, timing: tip.trim() });
+      }
+    } catch (err) {
+      errors.push({ id: card.id, title: card.title, error: err.message });
+    }
+  }
+
+  res.json({ backfilled: results.length, total: cards.length, errors: errors.length, results });
+});
+
+// --- Backfill structured lead-time-days via LLM ---
+
+app.post('/api/cards/backfill-lead-time', async (req, res) => {
+  const { reset } = req.body || {};
+  if (reset) {
+    db.prepare('UPDATE cards SET lead_time_days = NULL').run();
+  }
+  const cards = db.prepare("SELECT * FROM cards WHERE lead_time_days IS NULL AND title IS NOT NULL").all();
+  const results = [];
+  const errors = [];
+
+  for (const card of cards) {
+    try {
+      const context = await buildCardContext(card);
+      const lead = await generateLeadTime(context);
+      if (lead) {
+        db.prepare("UPDATE cards SET lead_time_days = ?, updated_at = datetime('now') WHERE id = ?").run(lead.lead_time_days, card.id);
+        results.push({ id: card.id, title: card.title, lead_time_days: lead.lead_time_days, reason: lead.reason });
       }
     } catch (err) {
       errors.push({ id: card.id, title: card.title, error: err.message });
@@ -3426,19 +3502,56 @@ app.delete('/api/flights/:id', (req, res) => {
 
 // --- Booking Calendar ---
 
-// Extract booking deadlines from card timing data
+// Map a lead-time integer to an urgency tier (matches the legacy regex extractor's tiers).
+function urgencyForDays(daysBefore) {
+  if (daysBefore <= 0) return 'past';
+  if (daysBefore >= 60) return 'critical';
+  if (daysBefore >= 30) return 'high';
+  if (daysBefore >= 7) return 'medium';
+  return 'low';
+}
+
+// Extract booking deadlines from card data.
+// Primary source: structured `lead_time_days` (populated by generateLeadTime).
+// Fallback: regex extraction from `timing` text (for cards not yet processed).
 app.get('/api/booking-calendar', (req, res) => {
   const { arrivalDate } = req.query;
   if (!arrivalDate) {
     return res.status(400).json({ error: 'arrivalDate required (YYYY-MM-DD format)' });
   }
 
-  const cards = db.prepare('SELECT id, title, category, timing, address, image_url, link_url FROM cards WHERE timing IS NOT NULL AND timing != \'\'').all();
+  const cards = db.prepare('SELECT id, title, category, timing, address, image_url, link_url, lead_time_days FROM cards').all();
 
   const bookingItems = [];
   const arrival = new Date(arrivalDate);
 
   for (const card of cards) {
+    if (card.lead_time_days != null && card.lead_time_days > 0) {
+      const deadline = new Date(arrival);
+      deadline.setDate(deadline.getDate() - card.lead_time_days);
+      const todayMs = new Date().setHours(0, 0, 0, 0);
+      const isPast = deadline.getTime() < todayMs;
+      bookingItems.push({
+        id: card.id,
+        title: card.title,
+        category: card.category,
+        address: card.address,
+        image_url: card.image_url,
+        link_url: card.link_url,
+        deadline: deadline.toISOString().split('T')[0],
+        daysBefore: card.lead_time_days,
+        urgency: isPast ? 'past' : urgencyForDays(card.lead_time_days),
+        note: card.timing || `Book ${card.lead_time_days} days in advance`,
+        source: 'lead_time_days',
+      });
+      continue;
+    }
+
+    // LLM confirmed walk-in (lead_time_days === 0): skip.
+    if (card.lead_time_days === 0) continue;
+
+    // Legacy fallback: regex extraction for cards with NULL lead_time_days.
+    if (!card.timing) continue;
     const deadline = extractBookingDeadline(card.timing, arrival);
     if (deadline) {
       bookingItems.push({
@@ -3452,6 +3565,7 @@ app.get('/api/booking-calendar', (req, res) => {
         daysBefore: deadline.daysBefore,
         urgency: deadline.urgency,
         note: deadline.note,
+        source: 'regex',
       });
     }
   }
