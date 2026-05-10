@@ -135,6 +135,27 @@ function PanToAnchor({ anchorCard }) {
   return null;
 }
 
+// Re-pans whenever requestId changes — so re-tapping the locate button
+// recenters even when coordinates are unchanged.
+function PanToUser({ userLocation, requestId }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || !userLocation) return;
+    map.panTo(userLocation);
+    if (map.getZoom() < 15) map.setZoom(15);
+  }, [map, requestId]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+// Standard "you are here" blue dot, white outline.
+function userLocationIcon() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+    <circle cx="11" cy="11" r="10" fill="%23ffffff"/>
+    <circle cx="11" cy="11" r="7" fill="%234285f4"/>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${svg}`;
+}
+
 const PRICE_LABELS = ['', '$', '$$', '$$$', '$$$$'];
 
 // Map our category filters to Google Maps POI feature types to hide
@@ -305,7 +326,7 @@ function FitPickerBounds({ ideas }) {
   return null;
 }
 
-export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPlace, hiddenCategories, showPois = true, onBoundsChange, pickerIdeas, bottomInsetPx = 0 }) {
+export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPlace, hiddenCategories, showPois = true, onBoundsChange, pickerIdeas, bottomInsetPx = 0, userLocation = null, locateRequestId = 0 }) {
   const [poiPlace, setPoiPlace] = useState(null);  // { ...placeData, _pos: {lat, lng} }
   const [poiLoading, setPoiLoading] = useState(null); // {lat, lng} while loading
   const [poiAdding, setPoiAdding] = useState(false);
@@ -388,7 +409,21 @@ export default function ProximityMap({ cards, anchorId, onSelectAnchor, onAddPla
       >
         <FitBounds positions={positions} bottomInsetPx={bottomInsetPx} />
         <PanToAnchor anchorCard={anchorCard} />
+        <PanToUser userLocation={userLocation} requestId={locateRequestId} />
         <ViewportTracker onBoundsChange={onBoundsChange} bottomInsetPx={bottomInsetPx} />
+
+        {userLocation && (
+          <Marker
+            position={userLocation}
+            title="Your location"
+            zIndex={1500}
+            icon={{
+              url: userLocationIcon(),
+              scaledSize: { width: 22, height: 22 },
+              anchor: { x: 11, y: 11 },
+            }}
+          />
+        )}
 
         {geoCards.map(card => {
           const isAnchor = card.id === anchorId;

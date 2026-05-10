@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Star, X, Landmark, UtensilsCrossed, Hotel, Sparkles, TrainFront, ShoppingBag, MapPin, LayoutGrid, List, Map as MapIcon, Eye, Plus, ChevronUp, ChevronDown, ChevronLeft, ExternalLink, Pencil, Compass, Info } from 'lucide-react';
+import { Star, X, Landmark, UtensilsCrossed, Hotel, Sparkles, TrainFront, ShoppingBag, MapPin, LayoutGrid, List, Map as MapIcon, Eye, EyeOff, Plus, ChevronUp, ChevronDown, ChevronLeft, ExternalLink, Pencil, Compass, Info, LocateFixed } from 'lucide-react';
 
 const CATEGORY_ICONS = {
   attraction: Landmark,
@@ -40,12 +40,46 @@ function useIsMobile(breakpoint = 700) {
   return mobile;
 }
 
+// iOS Safari's vh/dvh aren't reliable for full-height layouts — the bottom URL
+// bar leaves the page clipped. visualViewport.height gives us the actually-
+// visible height and updates as the bar shows/hides.
+function useViewportHeight() {
+  const read = () => (window.visualViewport?.height ?? window.innerHeight);
+  const [h, setH] = useState(read);
+  useEffect(() => {
+    const update = () => setH(read());
+    update();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', update);
+    vv?.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+    return () => {
+      vv?.removeEventListener('resize', update);
+      vv?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
+    };
+  }, []);
+  return h;
+}
+
+const MOBILE_APP_HEADER_H = 92;
+
 export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onStar, onAnchorChange, onShowMapChange, onBoundsChange, pickerIdeas }) {
   const isMobile = useIsMobile();
+  const viewportH = useViewportHeight();
+  const boardH = Math.max(0, viewportH - MOBILE_APP_HEADER_H);
+  const sheetSnaps = {
+    peek: MOBILE_SHEET_PEEK_PX,
+    list: Math.round(boardH * 0.78),
+    detail: Math.round(boardH * 0.88),
+    anchor: Math.round(boardH * 0.6),
+  };
   const [disabledCats, setDisabledCats] = useState(new Set());
   const [starredOnly, setStarredOnly] = useState(false);
   const [showMap, setShowMap] = useState(true);
-  const [showPois, setShowPois] = useState(true);
+  const [showPois, setShowPois] = useState(false);
   const [listView, setListView] = useState(false);
   const [anchorId, setAnchorId] = useState(null);
   const [radiusKm, setRadiusKm] = useState(1.5);
@@ -53,11 +87,136 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
   const [mapBounds, setMapBounds] = useState(null);
   const nearRef = useRef(null);
 
+  // Geolocation: tap the locate button to recenter the map on the user.
+  // requestId increments on each tap so the map re-pans even when the
+  // coordinates haven't changed.
+  const [userLocation, setUserLocation] = useState(null);
+  const [locating, setLocating] = useState(false);
+  const [locateRequestId, setLocateRequestId] = useState(0);
+
+  const handleLocateMe = useCallback(() => {
+    if (!navigator.geolocation) {
+      alert('Your browser does not support location.');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocateRequestId(id => id + 1);
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        alert(err.code === err.PERMISSION_DENIED
+          ? 'Location permission denied. Enable it in your browser settings.'
+          : 'Could not get your location.');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+    );
+  }, []);
+
   // Mobile sheet state — controls the persistent bottom sheet over the full-screen map.
   // Peek = thin preview of top card; list = scrollable all-cards; detail = single card view;
   // anchor = derived (when anchorId is set, shows nearby places + radius).
   const [sheetMode, setSheetMode] = useState('peek');
   const [selectedCardId, setSelectedCardId] = useState(null);
+
+  // Sheet drag — a vertical swipe on the handle/peek expands or collapses the sheet.
+  // Without this, the browser's default pan-y kicks in and scrolls the page.
+  const sheetRef = useRef(null);
+  const dragRef = useRef(null);
+  const justDraggedRef = useRef(false);
+  const [dragHeight, setDragHeight] = useState(null);
+
+  const onSheetPointerDown = useCallback((e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const startHeight = sheetRef.current?.getBoundingClientRect().height || MOBILE_SHEET_PEEK_PX;
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      startHeight,
+      moved: false,
+    };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
+  }, []);
+
+  const onSheetPointerMove = useCallback((e) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const dy = d.startY - e.clientY;
+    if (!d.moved && Math.abs(dy) > 6) d.moved = true;
+    if (!d.moved) return;
+    const vh = window.visualViewport?.height ?? window.innerHeight;
+    const maxH = Math.round(Math.max(0, vh - MOBILE_APP_HEADER_H) * 0.88);
+    const next = Math.min(maxH, Math.max(MOBILE_SHEET_PEEK_PX, d.startHeight + dy));
+    setDragHeight(next);
+  }, []);
+
+  const onSheetPointerUp = useCallback((e) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    dragRef.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+    if (!d.moved) {
+      setDragHeight(null);
+      return;
+    }
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 250);
+    const finalH = sheetRef.current?.getBoundingClientRect().height || d.startHeight;
+    const vh = window.visualViewport?.height ?? window.innerHeight;
+    const mid = (MOBILE_SHEET_PEEK_PX + Math.round(Math.max(0, vh - MOBILE_APP_HEADER_H) * 0.78)) / 2;
+    setSheetMode(finalH > mid ? 'list' : 'peek');
+    setDragHeight(null);
+  }, []);
+
+  const dragHandlers = {
+    onPointerDown: onSheetPointerDown,
+    onPointerMove: onSheetPointerMove,
+    onPointerUp: onSheetPointerUp,
+    onPointerCancel: onSheetPointerUp,
+  };
+
+  // Detail-sheet dismiss gesture: dragging the handle down translates the whole
+  // sheet, and on release past the threshold we close detail. Below the
+  // threshold it snaps back via CSS transition on transform.
+  const DETAIL_DISMISS_THRESHOLD_PX = 100;
+  const detailDragRef = useRef(null);
+  const [detailDragY, setDetailDragY] = useState(0);
+  const [detailDragActive, setDetailDragActive] = useState(false);
+
+  const onDetailPointerDown = useCallback((e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    detailDragRef.current = { pointerId: e.pointerId, startY: e.clientY, lastDy: 0 };
+    setDetailDragActive(true);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
+  }, []);
+
+  const onDetailPointerMove = useCallback((e) => {
+    const d = detailDragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const dy = Math.max(0, e.clientY - d.startY);
+    d.lastDy = dy;
+    setDetailDragY(dy);
+  }, []);
+
+  const onDetailPointerUp = useCallback((e) => {
+    const d = detailDragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    detailDragRef.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+    setDetailDragActive(false);
+    setDetailDragY(0);
+    if (d.lastDy > DETAIL_DISMISS_THRESHOLD_PX) setSelectedCardId(null);
+  }, []);
+
+  const detailDragHandlers = {
+    onPointerDown: onDetailPointerDown,
+    onPointerMove: onDetailPointerMove,
+    onPointerUp: onDetailPointerUp,
+    onPointerCancel: onDetailPointerUp,
+  };
 
   const handleBoundsChange = useCallback((bounds) => {
     setMapBounds(bounds);
@@ -283,10 +442,30 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
           <div className="sheet-list-info">
             <span className="sheet-list-title">{card.title}</span>
             <span className="sheet-list-meta">
-              {distBadge && <span className="sheet-list-dist">{distBadge}</span>}
-              {!distBadge && card.rating && <><Star size={10} fill="currentColor" /> {card.rating}</>}
-              {!distBadge && card.rating && card.address && <span className="sheet-list-sep">·</span>}
-              {!distBadge && card.address && <span className="sheet-list-addr">{card.address}</span>}
+              {card.category && (
+                <span className="sheet-list-cat">
+                  <span className="filter-dot" style={{ background: CATEGORY_COLORS[card.category] }} />
+                  {card.category}
+                </span>
+              )}
+              {card.rating && (
+                <>
+                  {card.category && <span className="sheet-list-sep">·</span>}
+                  <span className="sheet-list-rating"><Star size={10} fill="currentColor" /> {card.rating}</span>
+                </>
+              )}
+              {distBadge && (
+                <>
+                  {(card.category || card.rating) && <span className="sheet-list-sep">·</span>}
+                  <span className="sheet-list-dist">{distBadge}</span>
+                </>
+              )}
+              {!distBadge && card.address && (
+                <>
+                  {(card.category || card.rating) && <span className="sheet-list-sep">·</span>}
+                  <span className="sheet-list-addr">{card.address}</span>
+                </>
+              )}
             </span>
             {card.description && <span className="sheet-list-desc">{card.description}</span>}
           </div>
@@ -302,51 +481,65 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
     };
 
     return (
-      <div className="board board--mobile">
+      <div className="board board--mobile" style={{ height: `${boardH}px` }}>
         {/* Toolbar: text-link filters scroll horizontally, + button at right */}
         <div className="board-toolbar-mobile">
           <div className="board-toolbar-top">
             <div className="filter-row--scroll">
               {CATEGORIES.map(cat => {
                 const active = !disabledCats.has(cat);
+                const Icon = CATEGORY_ICONS[cat] || MapPin;
                 return (
                   <button
                     key={cat}
-                    className={`filter-link ${active ? 'active' : 'disabled'}`}
+                    className={`filter-link filter-link--icon ${active ? 'active' : 'disabled'}`}
                     onClick={() => toggleCat(cat)}
+                    aria-label={cat}
+                    aria-pressed={active}
+                    title={cat}
+                    style={active ? { color: CATEGORY_COLORS[cat] } : undefined}
                   >
-                    <span className="filter-dot" style={{ background: CATEGORY_COLORS[cat] }} />
-                    {cat}
+                    <Icon size={16} />
                   </button>
                 );
               })}
-              <span className="filter-link-sep" aria-hidden="true">·</span>
               <button
-                className={`filter-link ${starredOnly ? 'active' : ''}`}
+                className={`filter-link filter-link--icon ${starredOnly ? 'active' : ''}`}
                 onClick={() => setStarredOnly(s => !s)}
+                aria-label={starredOnly ? 'Show all places' : 'Show starred only'}
+                aria-pressed={starredOnly}
+                title={starredOnly ? 'Showing starred only' : 'Show starred only'}
               >
-                <Star size={11} fill={starredOnly ? 'currentColor' : 'none'} />
-                Starred
+                <Star size={16} fill={starredOnly ? 'currentColor' : 'none'} />
               </button>
-              <button
-                className={`filter-link ${anchorId ? 'active' : ''}`}
-                onClick={() => anchorId ? handleClearNear() : setNearOpen(o => !o)}
-              >
-                {anchorCard
-                  ? <>Near {anchorCard.title.length > 12 ? anchorCard.title.slice(0, 12) + '…' : anchorCard.title}</>
-                  : 'Near'
-                }
-                {anchorId && (
+              {anchorCard && (
+                <button
+                  className="filter-link active"
+                  onClick={handleClearNear}
+                >
+                  Near {anchorCard.title.length > 12 ? anchorCard.title.slice(0, 12) + '…' : anchorCard.title}
                   <span className="near-clear" onClick={(e) => { e.stopPropagation(); handleClearNear(); }}>
                     <X size={11} />
                   </span>
-                )}
+                </button>
+              )}
+              <button
+                className={`filter-link filter-link--icon ${showPois ? 'active' : ''}`}
+                onClick={() => setShowPois(p => !p)}
+                aria-label={showPois ? 'Hide map POIs' : 'Show map POIs'}
+                aria-pressed={showPois}
+                title={showPois ? 'Map POIs visible' : 'Map POIs hidden'}
+              >
+                {showPois ? <Eye size={16} /> : <EyeOff size={16} />}
               </button>
               <button
-                className={`filter-link ${showPois ? 'active' : ''}`}
-                onClick={() => setShowPois(p => !p)}
+                className={`filter-link filter-link--icon ${userLocation ? 'active' : ''} ${locating ? 'is-locating' : ''}`}
+                onClick={handleLocateMe}
+                disabled={locating}
+                aria-label="Find my location"
+                title="Find my location"
               >
-                <Eye size={11} /> POIs
+                <LocateFixed size={16} />
               </button>
             </div>
             <button className="add-btn-mobile" onClick={onAdd} aria-label="Add idea">
@@ -369,19 +562,29 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
             onBoundsChange={handleBoundsChange}
             pickerIdeas={pickerIdeas}
             bottomInsetPx={MOBILE_SHEET_PEEK_PX}
+            userLocation={userLocation}
+            locateRequestId={locateRequestId}
           />
         </div>
 
         {/* Persistent bottom sheet — peek / list / detail / anchor states */}
-        <div className={`mobile-sheet mobile-sheet--${sheetState}`}>
+        <div
+          ref={sheetRef}
+          className={`mobile-sheet mobile-sheet--${sheetState} ${dragHeight != null || detailDragActive ? 'mobile-sheet--dragging' : ''}`}
+          style={{
+            height: `${dragHeight ?? sheetSnaps[sheetState] ?? sheetSnaps.peek}px`,
+            transform: detailDragY > 0 ? `translateY(${detailDragY}px)` : undefined,
+          }}
+        >
 
           {sheetState === 'peek' && (
             <>
               <button
                 type="button"
                 className="mobile-sheet-handle"
-                onClick={() => setSheetMode('list')}
+                onClick={() => { if (justDraggedRef.current) return; setSheetMode('list'); }}
                 aria-label="Expand list"
+                {...dragHandlers}
               >
                 <span className="mobile-sheet-bar" />
               </button>
@@ -390,7 +593,8 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
                   role="button"
                   tabIndex={0}
                   className="sheet-peek"
-                  onClick={() => handleMobileSelectCard(peekCard.id)}
+                  onClick={() => { if (justDraggedRef.current) return; handleMobileSelectCard(peekCard.id); }}
+                  {...dragHandlers}
                 >
                   {peekCard.image_url
                     ? <img className="sheet-peek-img" src={peekCard.image_url} alt="" />
@@ -401,9 +605,24 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
                   <div className="sheet-peek-info">
                     <span className="sheet-peek-title">{peekCard.title}</span>
                     <span className="sheet-peek-meta">
-                      {peekCard.rating && <><Star size={10} fill="currentColor" /> {peekCard.rating}</>}
-                      {peekCard.rating && peekCard.address && <span className="sheet-list-sep">·</span>}
-                      {peekCard.address && <span className="sheet-peek-addr">{peekCard.address}</span>}
+                      {peekCard.category && (
+                        <span className="sheet-list-cat">
+                          <span className="filter-dot" style={{ background: CATEGORY_COLORS[peekCard.category] }} />
+                          {peekCard.category}
+                        </span>
+                      )}
+                      {peekCard.rating && (
+                        <>
+                          {peekCard.category && <span className="sheet-list-sep">·</span>}
+                          <span className="sheet-list-rating"><Star size={10} fill="currentColor" /> {peekCard.rating}</span>
+                        </>
+                      )}
+                      {peekCard.address && (
+                        <>
+                          {(peekCard.category || peekCard.rating) && <span className="sheet-list-sep">·</span>}
+                          <span className="sheet-peek-addr">{peekCard.address}</span>
+                        </>
+                      )}
                     </span>
                   </div>
                   <span className="sheet-peek-count">
@@ -423,8 +642,9 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
               <button
                 type="button"
                 className="mobile-sheet-handle"
-                onClick={() => setSheetMode('peek')}
+                onClick={() => { if (justDraggedRef.current) return; setSheetMode('peek'); }}
                 aria-label="Collapse list"
+                {...dragHandlers}
               >
                 <span className="mobile-sheet-bar" />
               </button>
@@ -452,9 +672,14 @@ export default function Board({ cards, onAdd, onAddPlace, onEdit, onDelete, onSt
 
           {sheetState === 'detail' && selectedCard && (
             <>
-              <div className="mobile-sheet-handle-static">
+              <button
+                type="button"
+                className="mobile-sheet-handle"
+                aria-label="Swipe down to close"
+                {...detailDragHandlers}
+              >
                 <span className="mobile-sheet-bar" />
-              </div>
+              </button>
               <div className="mobile-sheet-header">
                 <button
                   type="button"
